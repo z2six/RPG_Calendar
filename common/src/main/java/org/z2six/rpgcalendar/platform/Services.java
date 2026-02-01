@@ -1,7 +1,7 @@
-package com.example.examplemod.platform;
+package org.z2six.rpgcalendar.platform;
 
-import com.example.examplemod.Constants;
-import com.example.examplemod.platform.services.IPlatformHelper;
+import org.z2six.rpgcalendar.Constants;
+import org.z2six.rpgcalendar.platform.services.IPlatformHelper;
 
 import java.util.ServiceLoader;
 

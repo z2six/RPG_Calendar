@@ -1,4 +1,6 @@
-package com.example.examplemod.platform.services;
+package org.z2six.rpgcalendar.platform.services;
+
+import org.z2six.rpgcalendar.calendar.CalendarDefinition;
 
 public interface IPlatformHelper {
 
@@ -30,7 +32,11 @@ public interface IPlatformHelper {
      * @return The name of the environment type.
      */
     default String getEnvironmentName() {
-
         return isDevelopmentEnvironment() ? "development" : "production";
     }
+
+    /**
+     * Returns the active calendar definition for this runtime.
+     */
+    CalendarDefinition getCalendarDefinition();
 }
