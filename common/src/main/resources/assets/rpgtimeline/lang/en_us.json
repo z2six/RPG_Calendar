@@ -1,0 +1,8 @@
+{
+  "item.rpgtimeline.chronicle_note": "Server Notes",
+  "item.rpgtimeline.chronicle_world_first": "World-First Advancements",
+  "item.rpgtimeline.chronicle_advancement": "Advancements",
+  "item.rpgtimeline.chronicle_note.desc": "A steward's entry, inked into the Chronicle.",
+  "item.rpgtimeline.chronicle_world_first.desc": "A gilded seal for the first to achieve a feat.",
+  "item.rpgtimeline.chronicle_advancement.desc": "A record of progress etched into the Chronicle."
+}

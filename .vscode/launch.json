@@ -16,7 +16,7 @@
       ],
       "vmArgs": [
         "@C:\\Programming\\IntelliJ IDEA\\RPG_Calendar\\neoforge\\build\\moddev\\clientRunVmArgs.txt",
-        "-Dfml.modFolders\u003drpgcalendar%%C:\\Programming\\IntelliJ IDEA\\RPG_Calendar\\neoforge\\bin\\main"
+        "-Dfml.modFolders\u003drpgtimeline%%C:\\Programming\\IntelliJ IDEA\\RPG_Calendar\\neoforge\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\neoforge\\run",
       "console": "internalConsole",
@@ -37,7 +37,7 @@
       ],
       "vmArgs": [
         "@C:\\Programming\\IntelliJ IDEA\\RPG_Calendar\\neoforge\\build\\moddev\\dataRunVmArgs.txt",
-        "-Dfml.modFolders\u003drpgcalendar%%C:\\Programming\\IntelliJ IDEA\\RPG_Calendar\\neoforge\\bin\\main"
+        "-Dfml.modFolders\u003drpgtimeline%%C:\\Programming\\IntelliJ IDEA\\RPG_Calendar\\neoforge\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\neoforge\\run",
       "console": "internalConsole",
@@ -58,7 +58,7 @@
       ],
       "vmArgs": [
         "@C:\\Programming\\IntelliJ IDEA\\RPG_Calendar\\neoforge\\build\\moddev\\serverRunVmArgs.txt",
-        "-Dfml.modFolders\u003drpgcalendar%%C:\\Programming\\IntelliJ IDEA\\RPG_Calendar\\neoforge\\bin\\main"
+        "-Dfml.modFolders\u003drpgtimeline%%C:\\Programming\\IntelliJ IDEA\\RPG_Calendar\\neoforge\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\neoforge\\run",
       "console": "internalConsole",
