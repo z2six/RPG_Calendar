@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "rpgcalendar:item/chronicle_world_first"
+  }
+}
