@@ -8,6 +8,7 @@ import net.neoforged.fml.loading.FMLEnvironment;
 import org.z2six.rpgcalendar.chronicle.server.ChronicleServerEvents;
 import org.z2six.rpgcalendar.client.ChronicleClientSyncEvents;
 import org.z2six.rpgcalendar.client.ChronicleKeyBindings;
+import org.z2six.rpgcalendar.config.RPGCalendarClientConfig;
 import org.z2six.rpgcalendar.config.RPGCalendarConfig;
 import org.z2six.rpgcalendar.network.ChroniclePayloads;
 import org.z2six.rpgcalendar.network.RPGCalendarPayloads;
@@ -30,6 +31,13 @@ public class RPGCalendar {
             Constants.LOG.debug("[RPGCalendar] Registered RPGCalendarConfig (SERVER)");
         } catch (Throwable t) {
             Constants.LOG.error("[RPGCalendar] RPGCalendarConfig.register() failed", t);
+        }
+
+        try {
+            RPGCalendarClientConfig.register();
+            Constants.LOG.debug("[RPGCalendar] Registered RPGCalendarClientConfig (CLIENT)");
+        } catch (Throwable t) {
+            Constants.LOG.error("[RPGCalendar] RPGCalendarClientConfig.register() failed", t);
         }
 
         try {

@@ -10,12 +10,14 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
 import net.minecraft.ChatFormatting;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
+import org.z2six.rpgcalendar.Constants;
 import org.z2six.rpgcalendar.api.RPGCalendarApi;
 import org.z2six.rpgcalendar.calendar.CalendarDefinition;
 import org.z2six.rpgcalendar.chronicle.ChronicleDetail;
@@ -50,7 +52,8 @@ public class ChronicleScreen extends Screen {
     private static final float MAX_ZOOM = 1000.0f;
     private static final float ZOOM_STEP = 1.12f;
     private static final int TICK_LABEL_MIN_SPACING = 120;
-    private static final int SECTION_PIXEL_WIDTH = 24;
+    private static final int SECTION_PIXEL_WIDTH = 18;
+    private static final int SECTION_PIXEL_GAP = 6;
     private static final int NODE_BASE_OFFSET = 18;
     private static final int NODE_STACK_SPACING = 12;
     private static final int MAX_GROUP_DETAILS = 50;
@@ -64,6 +67,8 @@ public class ChronicleScreen extends Screen {
     private static final int BAR_HANDLE_COLOR = 0xFF5B5F6D;
     private static final int ACCENT_COLOR = 0xFF8DA3FF;
     private static final int WORLD_FIRST_COLOR = 0xFFF4D37C;
+    private static final ResourceLocation GOTHIC12_FONT_ID =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic12");
 
     private ChronicleTab tab = ChronicleTab.SERVER;
     private ChronicleScale scale = ChronicleScale.MONTH;
@@ -93,7 +98,7 @@ public class ChronicleScreen extends Screen {
     private int dragStartMouseX = 0;
     private int dragHandleGrabOffset = 0;
 
-    private ChronicleEntry selectedEntry = null;
+    private SectionBucket selectedSection = null;
     private ChronicleEntry hoveredEntry = null;
     private int hoveredNodeX = 0;
     private int hoveredNodeY = 0;
@@ -102,6 +107,8 @@ public class ChronicleScreen extends Screen {
     private boolean showAddPanel = false;
 
     private Button addEventButton;
+    private Button settingsButton;
+    private Button infoButton;
     private Button submitButton;
     private Button cancelButton;
     private Button closeDetailButton;
@@ -140,9 +147,31 @@ public class ChronicleScreen extends Screen {
     private int detailPanelH = 0;
     private int detailScrollOffset = 0;
     private int detailScrollMax = 0;
+    private int detailScrollBarX = 0;
+    private int detailScrollBarY = 0;
+    private int detailScrollBarW = 0;
+    private int detailScrollBarH = 0;
+    private int detailScrollHandleY = 0;
+    private int detailScrollHandleH = 0;
+    private boolean draggingDetailScroll = false;
+    private int detailDragOffset = 0;
+    private int syncTicker = 0;
 
     public ChronicleScreen() {
         super(Component.literal("Chronicle"));
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+        if (!ChroniclePayloads.ClientState.hasSynced()) {
+            return;
+        }
+        syncTicker++;
+        if (syncTicker >= 40) {
+            syncTicker = 0;
+            PacketDistributor.sendToServer(new ChroniclePayloads.RequestChroniclePayload());
+        }
     }
 
     @Override
@@ -156,11 +185,21 @@ public class ChronicleScreen extends Screen {
                     .bounds(panelX + panelW - 120 - PANEL_PADDING, panelY + 12, 100, 20)
                     .build();
             addRenderableWidget(addEventButton);
+
+            settingsButton = Button.builder(Component.literal("⚙"), btn -> {
+            }).bounds(panelX + panelW - 16 - PANEL_PADDING, panelY + 12, 20, 20).build();
+            addRenderableWidget(settingsButton);
+
+            infoButton = Button.builder(Component.literal("?"), btn -> {
+            }).bounds(panelX + panelW - 40 - PANEL_PADDING, panelY + 12, 20, 20).build();
+            addRenderableWidget(infoButton);
         }
 
         buildAddPanel();
         buildJumpControls();
         buildDetailPanelControls();
+
+        PacketDistributor.sendToServer(new ChroniclePayloads.RequestChroniclePayload());
     }
 
     private void buildAddPanel() {
@@ -342,10 +381,7 @@ public class ChronicleScreen extends Screen {
             cancelButton.visible = visible;
             cancelButton.active = dropdownActive;
         }
-        if (addEventButton != null) {
-            addEventButton.visible = !visible;
-            addEventButton.active = !visible;
-        }
+        updateAddEventButtonVisibility();
         if (!visible) {
             showEventMonthDropdown = false;
         }
@@ -354,12 +390,29 @@ public class ChronicleScreen extends Screen {
     }
 
     private void updateDetailPanelVisibility() {
-        boolean visible = selectedEntry != null && !showAddPanel;
+        boolean visible = selectedSection != null && !showAddPanel;
         if (closeDetailButton != null) {
             closeDetailButton.visible = visible;
             closeDetailButton.active = visible;
         }
+        updateAddEventButtonVisibility();
         updateJumpControlsVisibility();
+    }
+
+    private void updateAddEventButtonVisibility() {
+        boolean visible = !showAddPanel && selectedSection == null;
+        if (addEventButton != null) {
+            addEventButton.visible = visible;
+            addEventButton.active = visible;
+        }
+        if (settingsButton != null) {
+            settingsButton.visible = visible;
+            settingsButton.active = visible;
+        }
+        if (infoButton != null) {
+            infoButton.visible = visible;
+            infoButton.active = visible;
+        }
     }
 
     private void updateJumpControlsVisibility() {
@@ -376,13 +429,13 @@ public class ChronicleScreen extends Screen {
     }
 
     private boolean shouldHideJumpControls() {
-        return showAddPanel || selectedEntry != null;
+        return showAddPanel || selectedSection != null;
     }
 
     private void toggleAddPanel() {
         showAddPanel = !showAddPanel;
         if (!showAddPanel) {
-            selectedEntry = null;
+            selectedSection = null;
         } else {
             syncEventDateFromCurrent(RPGCalendarApi.getCalendarDefinition());
         }
@@ -390,7 +443,7 @@ public class ChronicleScreen extends Screen {
     }
 
     private void closeDetailPanel() {
-        selectedEntry = null;
+        selectedSection = null;
         detailScrollOffset = 0;
         updateDetailPanelVisibility();
     }
@@ -410,6 +463,8 @@ public class ChronicleScreen extends Screen {
         }
         ChronicleScope scope = tab == ChronicleTab.SERVER ? ChronicleScope.SERVER : ChronicleScope.PERSONAL;
         PacketDistributor.sendToServer(new ChroniclePayloads.AddAdminEventPayload(scope.name(), title, details, dayIndex));
+        PacketDistributor.sendToServer(new ChroniclePayloads.RequestChroniclePayload());
+        snapToLatest = true;
         if (titleBox != null) titleBox.setValue("");
         if (detailsBox != null) detailsBox.setValue("");
         toggleAddPanel();
@@ -418,6 +473,7 @@ public class ChronicleScreen extends Screen {
     @Override
     public void render(@NotNull GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         updateLayout();
+        layoutTopButtons();
         renderBackground(g, mouseX, mouseY, partialTick);
         g.fill(panelX, panelY, panelX + panelW, panelY + panelH, BG_COLOR);
 
@@ -435,8 +491,8 @@ public class ChronicleScreen extends Screen {
         updateDetailPanelVisibility();
         if (showAddPanel) {
             drawAddPanel(g);
-        } else if (selectedEntry != null) {
-            drawDetailPanel(g, selectedEntry);
+        } else if (selectedSection != null) {
+            drawDetailPanel(g, selectedSection);
         }
 
         if (!ChroniclePayloads.ClientState.hasSynced()) {
@@ -448,8 +504,18 @@ public class ChronicleScreen extends Screen {
         if (showAddPanel && showEventMonthDropdown) {
             g.pose().pushPose();
             g.pose().translate(0, 0, 400);
-            drawEventMonthDropdownList(g);
+            drawEventMonthDropdownList(g, mouseX, mouseY);
             g.pose().popPose();
+        }
+
+        if (infoButton != null && infoButton.visible && infoButton.isHoveredOrFocused()) {
+            List<net.minecraft.util.FormattedCharSequence> tooltip = List.of(
+                    Component.literal("Scroll: pan the timeline"),
+                    Component.literal("CTRL + Scroll: zoom in/out"),
+                    Component.literal("Drag the bar: scrub time"),
+                    Component.literal("Click nodes: open details")
+            ).stream().map(Component::getVisualOrderText).toList();
+            g.renderTooltip(font, tooltip, mouseX, mouseY);
         }
     }
 
@@ -464,6 +530,35 @@ public class ChronicleScreen extends Screen {
         panelY = margin;
         panelW = Math.max(0, width - margin * 2);
         panelH = Math.max(0, height - margin * 2);
+    }
+
+    private void layoutTopButtons() {
+        if (addEventButton == null) {
+            return;
+        }
+        int y = panelY + 12;
+        int gap = 4;
+        int smallW = 20;
+        int right = panelX + panelW - PANEL_PADDING;
+
+        if (infoButton != null) {
+            infoButton.setX(right - smallW);
+            infoButton.setY(y);
+            infoButton.setWidth(smallW);
+            infoButton.setHeight(20);
+            right -= smallW + gap;
+        }
+        if (settingsButton != null) {
+            settingsButton.setX(right - smallW);
+            settingsButton.setY(y);
+            settingsButton.setWidth(smallW);
+            settingsButton.setHeight(20);
+            right -= smallW + gap;
+        }
+        addEventButton.setX(right - 96);
+        addEventButton.setY(y);
+        addEventButton.setWidth(96);
+        addEventButton.setHeight(20);
     }
 
     private void updateScrollBounds() {
@@ -677,8 +772,42 @@ public class ChronicleScreen extends Screen {
         return value;
     }
 
+    private boolean isAtRightEdge() {
+        return Math.abs(viewStartUnit - maxViewStartUnit) <= 0.001f;
+    }
+
     private void drawHeader(@NotNull GuiGraphics g) {
-        g.drawString(font, "Chronicle", panelX + 18, panelY + 14, 0xFFEDEDED, false);
+        Component title = Component.literal(buildChronicleTitle())
+                .setStyle(Style.EMPTY.withFont(GOTHIC12_FONT_ID));
+        g.drawString(font, title, panelX + 18, panelY + 18, 0xFFEDEDED, false);
+    }
+
+    private String buildChronicleTitle() {
+        Minecraft mc = Minecraft.getInstance();
+        if (tab == ChronicleTab.SERVER) {
+            if (mc != null) {
+                if (mc.getSingleplayerServer() != null) {
+                    String worldName = mc.getSingleplayerServer().getWorldData().getLevelName();
+                    if (worldName != null && !worldName.isBlank()) {
+                        return "Chronicles of " + worldName;
+                    }
+                }
+                if (mc.getCurrentServer() != null && mc.getCurrentServer().name != null) {
+                    String serverName = mc.getCurrentServer().name;
+                    if (!serverName.isBlank()) {
+                        return "Chronicles of " + serverName;
+                    }
+                }
+            }
+        } else {
+            if (mc != null && mc.player != null) {
+                String playerName = mc.player.getGameProfile().getName();
+                if (playerName != null && !playerName.isBlank()) {
+                    return "Chronicles of " + playerName;
+                }
+            }
+        }
+        return "Chronicles";
     }
 
     private void drawTabs(@NotNull GuiGraphics g, int mouseX, int mouseY) {
@@ -769,7 +898,7 @@ public class ChronicleScreen extends Screen {
         }
     }
 
-    private void drawEventMonthDropdownList(@NotNull GuiGraphics g) {
+    private void drawEventMonthDropdownList(@NotNull GuiGraphics g, int mouseX, int mouseY) {
         if (eventMonthNames.isEmpty()) {
             return;
         }
@@ -783,6 +912,8 @@ public class ChronicleScreen extends Screen {
             int rowY = layout.y + i * layout.rowH;
             if (idx == eventMonthIndex) {
                 g.fill(layout.x, rowY, layout.x + layout.w, rowY + layout.rowH, PANEL_COLOR);
+            } else if (inRect(mouseX, mouseY, layout.x, rowY, layout.w, layout.rowH)) {
+                g.fill(layout.x, rowY, layout.x + layout.w, rowY + layout.rowH, TAB_INACTIVE_COLOR);
             }
             g.drawString(font, eventMonthNames.get(idx), layout.x + 6, rowY + 5, 0xFFEDEDED, false);
         }
@@ -793,6 +924,7 @@ public class ChronicleScreen extends Screen {
         if (mc == null || mc.level == null) {
             return;
         }
+        boolean blockTimelineHover = selectedSection != null || showAddPanel;
 
         CalendarDefinition def = RPGCalendarApi.getCalendarDefinition();
         refreshJumpMonthList(def);
@@ -826,10 +958,13 @@ public class ChronicleScreen extends Screen {
             }
         }
 
+        boolean wasAtRight = isAtRightEdge();
         updateScrollBounds();
         if (snapToLatest) {
             viewStartUnit = maxViewStartUnit;
             snapToLatest = false;
+        } else if (wasAtRight) {
+            viewStartUnit = maxViewStartUnit;
         }
 
         float viewUnits = Math.max(1.0f, (railRight - railLeft) / unitSpacing);
@@ -837,10 +972,13 @@ public class ChronicleScreen extends Screen {
 
         List<ChronicleEntry> entries = getFilteredEntries();
         int railWidth = Math.max(1, railRight - railLeft);
-        int sectionCount = Math.max(1, (int) Math.floor(railWidth / (float) SECTION_PIXEL_WIDTH));
-        float sectionSpan = Math.max(1.0f, viewUnits / sectionCount);
-        float viewStart = viewStartUnit;
-        float viewEnd = viewStartUnit + viewUnits;
+        int sectionStride = SECTION_PIXEL_WIDTH + SECTION_PIXEL_GAP;
+        int sectionCount = Math.max(1, (railWidth + SECTION_PIXEL_GAP) / Math.max(1, sectionStride));
+        double sectionSpan = Math.max(1.0, viewUnits / sectionCount);
+        double viewStart = viewStartUnit;
+        double viewEnd = viewStartUnit + viewUnits;
+        long viewStartDay = (long) Math.floor(viewStart);
+        long viewEndDay = (long) Math.ceil(viewEnd);
 
         Map<Integer, SectionBucket> sections = new HashMap<>();
         for (ChronicleEntry entry : entries) {
@@ -848,13 +986,11 @@ public class ChronicleScreen extends Screen {
             if (dayIndex < 0L || dayIndex > maxUnitIndex) {
                 continue;
             }
-            if (dayIndex < viewStart || dayIndex > viewEnd) {
+            if (dayIndex < viewStartDay || dayIndex > viewEndDay) {
                 continue;
             }
             int sectionIndex = (int) Math.floor((dayIndex - viewStart) / sectionSpan);
-            if (sectionIndex < 0 || sectionIndex >= sectionCount) {
-                continue;
-            }
+            sectionIndex = Math.max(0, Math.min(sectionIndex, sectionCount - 1));
             SectionBucket bucket = sections.computeIfAbsent(sectionIndex,
                     idx -> new SectionBucket(idx, clampAnchorDay(viewStart, sectionSpan, idx)));
             bucket.add(entry);
@@ -909,9 +1045,9 @@ public class ChronicleScreen extends Screen {
 
                 int nodeColor = entryMarkerColor(entry);
                 g.fill(nodeX, nodeY - nodeSize / 2, nodeX + nodeSize, nodeY + nodeSize / 2, nodeColor);
-                NodeBounds bounds = new NodeBounds(entry, nodeX - 2, nodeY - 4, nodeSize + 4, nodeSize + 8);
+                NodeBounds bounds = new NodeBounds(entry, bucket, nodeX - 2, nodeY - 4, nodeSize + 4, nodeSize + 8);
                 nodeBounds.add(bounds);
-                if (hoveredEntry == null && bounds.contains(mouseX, mouseY)) {
+                if (!blockTimelineHover && hoveredEntry == null && bounds.contains(mouseX, mouseY)) {
                     hoveredEntry = entry;
                     hoveredNodeX = (int) x;
                     hoveredNodeY = nodeY;
@@ -967,11 +1103,11 @@ public class ChronicleScreen extends Screen {
 
         return new DropdownLayout(listX, listY, listW, listH, rowH, visibleCount, eventMonthScroll);
     }
-    private void drawDetailPanel(@NotNull GuiGraphics g, ChronicleEntry entry) {
+    private void drawDetailPanel(@NotNull GuiGraphics g, SectionBucket bucket) {
         int panelWidth = 260;
-        int panelX = this.panelX + panelW - panelWidth - PANEL_PADDING;
-        int panelY = this.panelY + 48;
-        int panelHeight = panelH - 70;
+        int panelX = width - panelWidth;
+        int panelY = 0;
+        int panelHeight = height;
 
         detailPanelX = panelX;
         detailPanelY = panelY;
@@ -982,7 +1118,7 @@ public class ChronicleScreen extends Screen {
 
         if (closeDetailButton != null) {
             closeDetailButton.setX(panelX + 12);
-            closeDetailButton.setY(panelY + panelHeight - 26);
+            closeDetailButton.setY(panelY + panelHeight - 30);
             closeDetailButton.setWidth(panelWidth - 24);
             closeDetailButton.setHeight(20);
         }
@@ -992,86 +1128,92 @@ public class ChronicleScreen extends Screen {
         int lineHeight = font.lineHeight;
         int iconSize = 16;
         int rowGap = 8;
+        int groupGap = 10;
         int textX = innerX + iconSize + 8;
         int textWidth = innerW - iconSize - 8;
 
-        List<ChronicleDetail> drilldown = entry.drilldown();
-        if (drilldown == null || drilldown.isEmpty()) {
-            String subtitle = entry.type() == ChronicleEntryType.ADMIN_NOTE
-                    ? (entry.details() == null ? "" : entry.details())
-                    : (entry.iconItemId() == null ? "" : entry.iconItemId());
-            drilldown = List.of(new ChronicleDetail(entry.title(), subtitle, entry.dayIndex(), entry.actorUuid(), entry.actorName()));
-        }
+        List<ChronicleEntry> groups = buildSectionGroups(bucket);
+        int contentAreaY = panelY + 12;
+        int contentAreaH = panelHeight - 56;
 
-        int headerColor = 0xFFEDEDED;
-        if (entry.type() == ChronicleEntryType.WORLD_FIRST) {
-            headerColor = WORLD_FIRST_COLOR;
-        } else if (entry.type() == ChronicleEntryType.ADMIN_NOTE) {
-            headerColor = ACCENT_COLOR;
+        int contentHeight = 0;
+        for (ChronicleEntry group : groups) {
+            List<ChronicleDetail> drilldown = resolveDrilldown(group);
+            int groupHeight = lineHeight + 6 + 1 + 6;
+            for (ChronicleDetail detail : drilldown) {
+                groupHeight += measureDetailHeight(group.type(), detail, textWidth, lineHeight, iconSize) + rowGap;
+            }
+            contentHeight += groupHeight + groupGap;
         }
-
-        int contentHeight = lineHeight + 12;
-        for (ChronicleDetail detail : drilldown) {
-            contentHeight += measureDetailHeight(entry.type(), detail, textWidth, lineHeight, iconSize) + rowGap;
+        if (contentHeight > 0) {
+            contentHeight -= groupGap;
         }
-        detailScrollMax = Math.max(0, contentHeight - (panelHeight - 36));
+        detailScrollMax = Math.max(0, contentHeight - contentAreaH);
         detailScrollOffset = (int) clamp(detailScrollOffset, 0, detailScrollMax);
 
-        int y = panelY + 10 - detailScrollOffset;
-        g.drawString(font, entry.title(), innerX, y, headerColor, false);
-        y += lineHeight + 6;
-        g.fill(innerX, y, innerX + innerW, y + 1, CARD_BORDER);
-        y += 6;
+        int y = contentAreaY - detailScrollOffset;
+        for (ChronicleEntry group : groups) {
+            int headerColor = headerColorForType(group.type());
+            List<ChronicleDetail> drilldown = resolveDrilldown(group);
 
-        for (ChronicleDetail detail : drilldown) {
-            int rowHeight = measureDetailHeight(entry.type(), detail, textWidth, lineHeight, iconSize);
-            if (y + rowHeight < panelY) {
-                y += rowHeight + rowGap;
-                continue;
-            }
-            if (y > panelY + panelHeight) {
-                break;
-            }
+            g.drawString(font, group.title(), innerX, y, headerColor, false);
+            y += lineHeight + 6;
+            g.fill(innerX, y, innerX + innerW, y + 1, CARD_BORDER);
+            y += 6;
 
-            ItemStack icon = iconForDetail(entry.type(), detail);
-            g.renderItem(icon, innerX, y);
+            for (ChronicleDetail detail : drilldown) {
+                int rowHeight = measureDetailHeight(group.type(), detail, textWidth, lineHeight, iconSize);
+                if (y + rowHeight < contentAreaY) {
+                    y += rowHeight + rowGap;
+                    continue;
+                }
+                if (y > contentAreaY + contentAreaH) {
+                    break;
+                }
 
-            int textY = y;
-            if (entry.type() == ChronicleEntryType.ADMIN_NOTE) {
-                g.drawString(font, detail.title(), textX, textY, 0xFFE0E2EC, false);
-                textY += lineHeight;
+                ItemStack icon = iconForDetail(group.type(), detail);
+                g.renderItem(icon, innerX, y);
 
-                String noteDetails = detail.subtitle();
-                if (noteDetails != null && !noteDetails.isBlank()) {
-                    List<net.minecraft.util.FormattedCharSequence> lines = font.split(Component.literal(noteDetails), textWidth);
-                    for (net.minecraft.util.FormattedCharSequence line : lines) {
-                        if (textY + lineHeight >= panelY && textY <= panelY + panelHeight) {
-                            g.drawString(font, line, textX, textY, 0xFFC8CBD6, false);
+                int textY = y;
+                if (group.type() == ChronicleEntryType.ADMIN_NOTE) {
+                    g.drawString(font, detail.title(), textX, textY, 0xFFE0E2EC, false);
+                    textY += lineHeight;
+
+                    String noteDetails = detail.subtitle();
+                    if (noteDetails != null && !noteDetails.isBlank()) {
+                        List<net.minecraft.util.FormattedCharSequence> lines = font.split(Component.literal(noteDetails), textWidth);
+                        for (net.minecraft.util.FormattedCharSequence line : lines) {
+                            if (textY + lineHeight >= contentAreaY && textY <= contentAreaY + contentAreaH) {
+                                g.drawString(font, line, textX, textY, 0xFFC8CBD6, false);
+                            }
+                            textY += lineHeight;
                         }
-                        textY += lineHeight;
                     }
+
+                    String author = detail.actorName() == null || detail.actorName().isBlank() ? "Server" : detail.actorName();
+                    g.drawString(font, "By: " + author, textX, textY, 0xFFB0B4C2, false);
+                    textY += lineHeight;
+                    g.drawString(font, RPGCalendarApi.buildDateString(detail.dayIndex()), textX, textY, 0xFF8F93A2, false);
+                } else {
+                    String label = group.type() == ChronicleEntryType.WORLD_FIRST ? "World First: " : "Advancement: ";
+                    String title = detail.title();
+                    if (group.type() == ChronicleEntryType.WORLD_FIRST && title != null && title.startsWith("World First: ")) {
+                        title = title.substring("World First: ".length());
+                    }
+                    g.drawString(font, label + title, textX, textY, 0xFFE0E2EC, false);
+                    textY += lineHeight;
+                    String author = detail.actorName() == null || detail.actorName().isBlank() ? "Unknown" : detail.actorName();
+                    g.drawString(font, "Completed by: " + author, textX, textY, 0xFFB0B4C2, false);
+                    textY += lineHeight;
+                    g.drawString(font, RPGCalendarApi.buildDateString(detail.dayIndex()), textX, textY, 0xFF8F93A2, false);
                 }
 
-                String author = detail.actorName() == null || detail.actorName().isBlank() ? "Server" : detail.actorName();
-                g.drawString(font, "By: " + author, textX, textY, 0xFFB0B4C2, false);
-                textY += lineHeight;
-                g.drawString(font, RPGCalendarApi.buildDateString(detail.dayIndex()), textX, textY, 0xFF8F93A2, false);
-            } else {
-                String label = entry.type() == ChronicleEntryType.WORLD_FIRST ? "World First: " : "Advancement: ";
-                String title = detail.title();
-                if (entry.type() == ChronicleEntryType.WORLD_FIRST && title != null && title.startsWith("World First: ")) {
-                    title = title.substring("World First: ".length());
-                }
-                g.drawString(font, label + title, textX, textY, 0xFFE0E2EC, false);
-                textY += lineHeight;
-                String author = detail.actorName() == null || detail.actorName().isBlank() ? "Unknown" : detail.actorName();
-                g.drawString(font, "Completed by: " + author, textX, textY, 0xFFB0B4C2, false);
-                textY += lineHeight;
-                g.drawString(font, RPGCalendarApi.buildDateString(detail.dayIndex()), textX, textY, 0xFF8F93A2, false);
+                y += rowHeight + rowGap;
             }
-
-            y += rowHeight + rowGap;
+            y += groupGap;
         }
+
+        drawDetailScrollbar(g, contentAreaY, contentAreaH);
     }
 
     private void drawAddPanel(@NotNull GuiGraphics g) {
@@ -1081,6 +1223,47 @@ public class ChronicleScreen extends Screen {
         g.drawString(font, "Add Event", addPanelX + 12, addPanelY + 10, 0xFFEDEDED, false);
         g.drawString(font, "Date:", addPanelX + 16, addPanelY + 66 + 5, 0xFFB0B4C2, false);
         drawEventMonthDropdownControl(g);
+    }
+
+    private List<ChronicleEntry> buildSectionGroups(SectionBucket bucket) {
+        if (bucket == null) {
+            return List.of();
+        }
+        List<ChronicleEntry> groups = new ArrayList<>(3);
+        ChronicleEntry notes = buildGroupedEntry(bucket.notes, NodeCategory.NOTES, bucket.anchorDay);
+        if (notes != null) {
+            groups.add(notes);
+        }
+        ChronicleEntry worldFirsts = buildGroupedEntry(bucket.worldFirsts, NodeCategory.WORLD_FIRST, bucket.anchorDay);
+        if (worldFirsts != null) {
+            groups.add(worldFirsts);
+        }
+        ChronicleEntry others = buildGroupedEntry(bucket.others, NodeCategory.OTHER, bucket.anchorDay);
+        if (others != null) {
+            groups.add(others);
+        }
+        return groups;
+    }
+
+    private List<ChronicleDetail> resolveDrilldown(ChronicleEntry entry) {
+        List<ChronicleDetail> drilldown = entry.drilldown();
+        if (drilldown != null && !drilldown.isEmpty()) {
+            return drilldown;
+        }
+        String subtitle = entry.type() == ChronicleEntryType.ADMIN_NOTE
+                ? (entry.details() == null ? "" : entry.details())
+                : (entry.iconItemId() == null ? "" : entry.iconItemId());
+        return List.of(new ChronicleDetail(entry.title(), subtitle, entry.dayIndex(), entry.actorUuid(), entry.actorName()));
+    }
+
+    private int headerColorForType(ChronicleEntryType type) {
+        if (type == ChronicleEntryType.WORLD_FIRST) {
+            return WORLD_FIRST_COLOR;
+        }
+        if (type == ChronicleEntryType.ADMIN_NOTE) {
+            return ACCENT_COLOR;
+        }
+        return 0xFFEDEDED;
     }
 
     private int measureDetailHeight(ChronicleEntryType type, ChronicleDetail detail, int textWidth, int lineHeight, int iconSize) {
@@ -1113,6 +1296,34 @@ public class ChronicleScreen extends Screen {
         return new ItemStack(Items.PAPER);
     }
 
+    private void drawDetailScrollbar(@NotNull GuiGraphics g, int contentY, int contentH) {
+        int barW = 6;
+        int barX = detailPanelX + detailPanelW - barW - 6;
+        int barY = contentY;
+        int barH = contentH;
+        detailScrollBarX = barX;
+        detailScrollBarY = barY;
+        detailScrollBarW = barW;
+        detailScrollBarH = barH;
+
+        g.fill(barX, barY, barX + barW, barY + barH, PANEL_COLOR);
+
+        if (detailScrollMax <= 0) {
+            detailScrollHandleY = barY;
+            detailScrollHandleH = barH;
+            g.fill(barX, barY, barX + barW, barY + barH, BAR_HANDLE_COLOR);
+            return;
+        }
+
+        int handleH = Math.max(12, (int) ((barH / (float) (detailScrollMax + barH)) * barH));
+        int maxOffset = barH - handleH;
+        int handleY = barY + (int) ((detailScrollOffset / (float) detailScrollMax) * maxOffset);
+
+        detailScrollHandleY = handleY;
+        detailScrollHandleH = handleH;
+        g.fill(barX, handleY, barX + barW, handleY + handleH, BAR_HANDLE_COLOR);
+    }
+
     private List<ChronicleEntry> getFilteredEntries() {
         return getEntriesForTab();
     }
@@ -1124,8 +1335,8 @@ public class ChronicleScreen extends Screen {
         return entries == null ? List.of() : entries;
     }
 
-    private long clampAnchorDay(float viewStart, float sectionSpan, int sectionIndex) {
-        float anchor = viewStart + sectionSpan * (sectionIndex + 0.5f);
+    private long clampAnchorDay(double viewStart, double sectionSpan, int sectionIndex) {
+        double anchor = viewStart + sectionSpan * (sectionIndex + 0.5);
         long day = Math.round(anchor);
         if (day < 0L) {
             day = 0L;
@@ -1461,7 +1672,7 @@ public class ChronicleScreen extends Screen {
         if (showAddPanel && detailsBox != null && detailsBox.mouseScrolled(mouseX, mouseY, deltaX, deltaY)) {
             return true;
         }
-        if (selectedEntry != null && !showAddPanel) {
+        if (selectedSection != null && !showAddPanel) {
             int scrollStep = Math.max(12, font.lineHeight * 2);
             float nextOffset = (float) (detailScrollOffset - deltaY * scrollStep);
             detailScrollOffset = (int) clamp(nextOffset, 0, detailScrollMax);
@@ -1489,6 +1700,12 @@ public class ChronicleScreen extends Screen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         updateLayout();
         if (button == 0) {
+            if (selectedSection != null
+                    && inRect(mouseX, mouseY, detailScrollBarX, detailScrollHandleY, detailScrollBarW, detailScrollHandleH)) {
+                draggingDetailScroll = true;
+                detailDragOffset = (int) mouseY - detailScrollHandleY;
+                return true;
+            }
             if (inRect(mouseX, mouseY, scrollHandleX, scrollHandleY, scrollHandleW, scrollHandleH)) {
                 draggingScroll = true;
                 dragStartMouseX = (int) mouseX;
@@ -1508,14 +1725,14 @@ public class ChronicleScreen extends Screen {
 
             for (NodeBounds bounds : nodeBounds) {
                 if (bounds.contains(mouseX, mouseY)) {
-                    selectedEntry = bounds.entry;
+                    selectedSection = bounds.bucket;
                     detailScrollOffset = 0;
                     showAddPanel = false;
                     updateAddPanelVisibility();
                     return true;
                 }
             }
-            if (selectedEntry != null && !showAddPanel
+            if (selectedSection != null && !showAddPanel
                     && !inRect(mouseX, mouseY, detailPanelX, detailPanelY, detailPanelW, detailPanelH)) {
                 closeDetailPanel();
                 return true;
@@ -1526,6 +1743,17 @@ public class ChronicleScreen extends Screen {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (draggingDetailScroll && button == 0) {
+            int track = Math.max(1, detailScrollBarH - detailScrollHandleH);
+            if (detailScrollMax <= 0 || track <= 0) {
+                return true;
+            }
+            float handlePos = (float) mouseY - detailScrollBarY - detailDragOffset;
+            handlePos = clamp(handlePos, 0.0f, track);
+            float progress = handlePos / track;
+            detailScrollOffset = (int) clamp(progress * detailScrollMax, 0, detailScrollMax);
+            return true;
+        }
         if (draggingScroll && button == 0) {
             updateLayout();
             float trackSpan = Math.max(1.0f, scrollbarW - scrollHandleW);
@@ -1546,6 +1774,7 @@ public class ChronicleScreen extends Screen {
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         if (button == 0) {
             draggingScroll = false;
+            draggingDetailScroll = false;
         }
         return super.mouseReleased(mouseX, mouseY, button);
     }
@@ -1557,13 +1786,13 @@ public class ChronicleScreen extends Screen {
         int h = TAB_HEIGHT;
         if (inRect(mouseX, mouseY, x, y, w, h)) {
             tab = ChronicleTab.SERVER;
-            selectedEntry = null;
+            selectedSection = null;
             snapToLatest = true;
             return true;
         }
         if (inRect(mouseX, mouseY, x + w + 8, y, w, h)) {
             tab = ChronicleTab.PERSONAL;
-            selectedEntry = null;
+            selectedSection = null;
             snapToLatest = true;
             return true;
         }
@@ -1698,13 +1927,15 @@ public class ChronicleScreen extends Screen {
 
     private static final class NodeBounds {
         private final ChronicleEntry entry;
+        private final SectionBucket bucket;
         private final int x;
         private final int y;
         private final int w;
         private final int h;
 
-        private NodeBounds(ChronicleEntry entry, int x, int y, int w, int h) {
+        private NodeBounds(ChronicleEntry entry, SectionBucket bucket, int x, int y, int w, int h) {
             this.entry = entry;
+            this.bucket = bucket;
             this.x = x;
             this.y = y;
             this.w = w;

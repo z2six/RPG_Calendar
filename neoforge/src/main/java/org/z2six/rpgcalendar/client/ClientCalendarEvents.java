@@ -17,7 +17,7 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.z2six.rpgcalendar.Constants;
 import org.z2six.rpgcalendar.api.RPGCalendarApi;
-import org.z2six.rpgcalendar.network.RPGCalendarPayloads;
+import org.z2six.rpgcalendar.config.RPGCalendarClientConfig;
 
 /**
  * Client-side handler that:
@@ -50,6 +50,17 @@ public final class ClientCalendarEvents {
     // Custom font id (assets/rpgcalendar/font/gothic12.json)
     private static final ResourceLocation GOTHIC_FONT_ID =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic12");
+    private static final ResourceLocation GOTHIC24_FONT_ID =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic24");
+
+    private static final ResourceLocation TOP_ORNAMENT =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/top_ornament_dropshadow.png");
+    private static final ResourceLocation BOTTOM_ORNAMENT =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/bottom_ornament_dropshadow.png");
+    private static final int TOP_ORNAMENT_W = 48;
+    private static final int TOP_ORNAMENT_H = 9;
+    private static final int BOTTOM_ORNAMENT_W = 62;
+    private static final int BOTTOM_ORNAMENT_H = 14;
 
     private ClientCalendarEvents() {
         // no-op
@@ -127,12 +138,8 @@ public final class ClientCalendarEvents {
             GuiGraphics g = event.getGuiGraphics();
             Font font = mc.font;
 
-            boolean useCustomFont = RPGCalendarPayloads.ClientState.useCustomFont();
-
             MutableComponent styled = currentMessage.copy();
-            if (useCustomFont) {
-                styled.setStyle(Style.EMPTY.withFont(GOTHIC_FONT_ID));
-            }
+            applyToastFont(styled);
 
             int screenWidth = mc.getWindow().getGuiScaledWidth();
             int textWidth = font.width(styled);
@@ -149,8 +156,7 @@ public final class ClientCalendarEvents {
             g.drawString(font, styled, x + 1, y + 1, shadowArgb, false);
             g.drawString(font, styled, x, y, argb, false);
 
-            // Draw custom decorative ornament around the text (bars + small "diamond")
-            drawDecorativeOrnament(g, x, y, textWidth, textHeight, alpha);
+            drawOrnaments(g, x, y, textWidth, textHeight);
 
         } catch (Throwable t) {
             LOG.error("[ClientCalendarEvents] onRenderGui failed", t);
@@ -216,75 +222,41 @@ public final class ClientCalendarEvents {
     // -------------------------------------------------------------------------
 
     /**
-     * Draws a small calligraphy-style ornament:
-     *
-     *   [====\     Day X of Month, Year Suffix     /====]
-     *                      <diamond>
-     *
-     * Bars are drawn using rectangles; the little diamond is a tiny cross of pixels.
-     * All tinted by the same alpha as the main text.
+     * Draws the top/bottom PNG ornaments around the day toast.
      */
-    private static void drawDecorativeOrnament(
-            @NotNull GuiGraphics g,
-            int textX,
-            int textY,
-            int textWidth,
-            int textHeight,
-            int alpha
-    ) {
+    private static void applyToastFont(@NotNull MutableComponent styled) {
+        RPGCalendarClientConfig.DayToastFont choice = RPGCalendarClientConfig.getDayToastFont();
+        if (choice == RPGCalendarClientConfig.DayToastFont.GOTHIC12) {
+            styled.setStyle(Style.EMPTY.withFont(GOTHIC_FONT_ID));
+        } else if (choice == RPGCalendarClientConfig.DayToastFont.GOTHIC24) {
+            styled.setStyle(Style.EMPTY.withFont(GOTHIC24_FONT_ID));
+        }
+    }
+
+    private static void drawOrnaments(@NotNull GuiGraphics g, int textX, int textY, int textWidth, int textHeight) {
         try {
-            if (alpha <= 0) {
-                return;
-            }
-
-            // Slightly dimmer than the text itself.
-            // Use same alpha channel, but a warmer-ish RGB (soft beige).
-            int ornamentColor = (alpha << 24) | 0x00E0D0B0;
-
-            // Geometry:
-            // - Bars are horizontally aligned with the vertical center of the text.
-            // - A gap between text and bar to avoid touching.
-            int centerY = textY + textHeight / 2;
-
-            int gap = 6;          // distance from text to start of bar
-            int barLength = 40;   // length of each side bar
-            int barThickness = 2; // vertical thickness of the bar
-
-            // Left bar: [====\
-            int leftBarEndX = textX - gap;
-            int leftBarStartX = leftBarEndX - barLength;
-
-            // Right bar: /====]
-            int rightBarStartX = textX + textWidth + gap;
-            int rightBarEndX = rightBarStartX + barLength;
-
-            int barTop = centerY - barThickness / 2;
-            int barBottom = barTop + barThickness;
-
-            // Draw straight bars
-            g.fill(leftBarStartX, barTop, leftBarEndX, barBottom, ornamentColor);
-            g.fill(rightBarStartX, barTop, rightBarEndX, barBottom, ornamentColor);
-
-            // Add a subtle taper at the inner ends of each bar using 1-pixel steps
-            // to fake a little angled flourish.
-            // Left inner tip
-            g.fill(leftBarEndX, barTop - 1, leftBarEndX + 1, barTop, ornamentColor);
-            g.fill(leftBarEndX, barBottom, leftBarEndX + 1, barBottom + 1, ornamentColor);
-
-            // Right inner tip
-            g.fill(rightBarStartX - 1, barTop - 1, rightBarStartX, barTop, ornamentColor);
-            g.fill(rightBarStartX - 1, barBottom, rightBarStartX, barBottom + 1, ornamentColor);
-
-            // Small diamond under the center of the text: a tiny cross / plus shape.
+            float scale = 0.5f;
+            float invScale = 1.0f / scale;
             int centerX = textX + textWidth / 2;
-            int diamondY = textY + textHeight + 3; // just below the baseline
-            // Vertical stroke
-            g.fill(centerX, diamondY - 1, centerX + 1, diamondY + 2, ornamentColor);
-            // Horizontal stroke
-            g.fill(centerX - 1, diamondY, centerX + 2, diamondY + 1, ornamentColor);
 
+            g.pose().pushPose();
+            g.pose().scale(scale, scale, 1.0f);
+
+            int scaledCenterX = Math.round(centerX * invScale);
+            int scaledTextY = Math.round(textY * invScale);
+            int scaledTextHeight = Math.round(textHeight * invScale);
+
+            int topX = scaledCenterX - TOP_ORNAMENT_W / 2;
+            int topY = scaledTextY - TOP_ORNAMENT_H - 6;
+            g.blit(TOP_ORNAMENT, topX, topY, 0, 0, TOP_ORNAMENT_W, TOP_ORNAMENT_H, TOP_ORNAMENT_W, TOP_ORNAMENT_H);
+
+            int bottomX = scaledCenterX - BOTTOM_ORNAMENT_W / 2;
+            int bottomY = scaledTextY + scaledTextHeight + 6;
+            g.blit(BOTTOM_ORNAMENT, bottomX, bottomY, 0, 0, BOTTOM_ORNAMENT_W, BOTTOM_ORNAMENT_H, BOTTOM_ORNAMENT_W, BOTTOM_ORNAMENT_H);
+
+            g.pose().popPose();
         } catch (Throwable t) {
-            LOG.error("[ClientCalendarEvents] drawDecorativeOrnament failed", t);
+            LOG.error("[ClientCalendarEvents] drawOrnaments failed", t);
         }
     }
 }
