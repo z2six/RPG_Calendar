@@ -12,7 +12,6 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.Style;
 import net.minecraft.ChatFormatting;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -20,6 +19,7 @@ import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.z2six.rpgtimeline.Constants;
+import org.z2six.rpgtimeline.client.tooltip.ChronicleItemTooltipClient;
 import org.z2six.rpgtimeline.api.RPGTimelineApi;
 import org.z2six.rpgtimeline.calendar.CalendarDefinition;
 import org.z2six.rpgtimeline.chronicle.ChronicleDetail;
@@ -51,6 +51,7 @@ public class ChronicleScreen extends Screen {
     private static final int BAR_HEIGHT = 8;
     private static final int BAR_GAP = 4;
     private static final int BAR_INSET = 12;
+    private static final int DETAIL_PANEL_WIDTH = 260;
     private static final float MIN_ZOOM = 0.000001f;
     private static final float MAX_ZOOM = 1000.0f;
     private static final float ZOOM_STEP = 1.12f;
@@ -70,8 +71,8 @@ public class ChronicleScreen extends Screen {
     private static final int BAR_HANDLE_COLOR = 0xFF5B5F6D;
     private static final int ACCENT_COLOR = 0xFF8DA3FF;
     private static final int WORLD_FIRST_COLOR = 0xFFF4D37C;
-    private static final ResourceLocation GOTHIC12_FONT_ID =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic12");
+    private static final ResourceLocation HALL_OF_FAME_ICON =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/item/chronicle_world_first.png");
 
     private ChronicleTab tab = ChronicleTab.SERVER;
     private ChronicleScale scale = ChronicleScale.MONTH;
@@ -91,6 +92,10 @@ public class ChronicleScreen extends Screen {
     private int panelH = 0;
     private int railLeft = 0;
     private int railRight = 0;
+    private int timelineAreaX = 0;
+    private int timelineAreaY = 0;
+    private int timelineAreaW = 0;
+    private int timelineAreaH = 0;
     private int scrollbarX = 0;
     private int scrollbarY = 0;
     private int scrollbarW = 0;
@@ -115,9 +120,6 @@ public class ChronicleScreen extends Screen {
 
     private boolean showAddPanel = false;
 
-    private Button addEventButton;
-    private Button settingsButton;
-    private Button infoButton;
     private Button submitButton;
     private Button cancelButton;
     private Button closeDetailButton;
@@ -165,6 +167,33 @@ public class ChronicleScreen extends Screen {
     private boolean draggingDetailScroll = false;
     private int detailDragOffset = 0;
     private int syncTicker = 0;
+    private boolean showAddButton = false;
+    private boolean showInfoButton = false;
+    private boolean hoverAddButton = false;
+    private boolean hoverInfoButton = false;
+    private int addButtonX = 0;
+    private int addButtonY = 0;
+    private int addButtonW = 24;
+    private int addButtonH = 24;
+    private int infoButtonX = 0;
+    private int infoButtonY = 0;
+    private int infoButtonW = 24;
+    private int infoButtonH = 24;
+    private boolean hoverSubmitButton = false;
+    private boolean hoverCancelButton = false;
+    private int submitButtonX = 0;
+    private int submitButtonY = 0;
+    private int submitButtonW = 0;
+    private int submitButtonH = 0;
+    private int cancelButtonX = 0;
+    private int cancelButtonY = 0;
+    private int cancelButtonW = 0;
+    private int cancelButtonH = 0;
+    private boolean hoverCloseButton = false;
+    private int closeButtonX = 0;
+    private int closeButtonY = 0;
+    private int closeButtonW = 0;
+    private int closeButtonH = 0;
 
     public ChronicleScreen() {
         super(Component.literal("Chronicle"));
@@ -191,21 +220,7 @@ public class ChronicleScreen extends Screen {
         super.init();
         updateLayout();
         this.clearWidgets();
-
-        if (isAdminPlayer()) {
-            addEventButton = Button.builder(Component.literal("Add Event"), btn -> toggleAddPanel())
-                    .bounds(panelX + panelW - 120 - PANEL_PADDING, panelY + 12, 100, 20)
-                    .build();
-            addRenderableWidget(addEventButton);
-
-            settingsButton = Button.builder(Component.literal("⚙"), btn -> {
-            }).bounds(panelX + panelW - 16 - PANEL_PADDING, panelY + 12, 20, 20).build();
-            addRenderableWidget(settingsButton);
-
-            infoButton = Button.builder(Component.literal("?"), btn -> {
-            }).bounds(panelX + panelW - 40 - PANEL_PADDING, panelY + 12, 20, 20).build();
-            addRenderableWidget(infoButton);
-        }
+        updateAddEventButtonVisibility();
 
         buildAddPanel();
         buildJumpControls();
@@ -313,6 +328,14 @@ public class ChronicleScreen extends Screen {
         }
 
         int buttonY = addPanelY + addPanelH - 56;
+        submitButtonX = fieldX;
+        submitButtonY = buttonY;
+        submitButtonW = fieldW;
+        submitButtonH = 20;
+        cancelButtonX = fieldX;
+        cancelButtonY = buttonY + 26;
+        cancelButtonW = fieldW;
+        cancelButtonH = 20;
         if (submitButton != null) {
             submitButton.setX(fieldX);
             submitButton.setY(buttonY);
@@ -384,14 +407,13 @@ public class ChronicleScreen extends Screen {
             detailsBox.visible = visible;
             detailsBox.active = visible;
         }
-        boolean dropdownActive = visible && !showEventMonthDropdown;
         if (submitButton != null) {
-            submitButton.visible = visible;
-            submitButton.active = dropdownActive;
+            submitButton.visible = false;
+            submitButton.active = false;
         }
         if (cancelButton != null) {
-            cancelButton.visible = visible;
-            cancelButton.active = dropdownActive;
+            cancelButton.visible = false;
+            cancelButton.active = false;
         }
         updateAddEventButtonVisibility();
         if (!visible) {
@@ -404,8 +426,8 @@ public class ChronicleScreen extends Screen {
     private void updateDetailPanelVisibility() {
         boolean visible = (selectedSection != null || selectedHallUuid != null) && !showAddPanel;
         if (closeDetailButton != null) {
-            closeDetailButton.visible = visible;
-            closeDetailButton.active = visible;
+            closeDetailButton.visible = false;
+            closeDetailButton.active = false;
         }
         updateAddEventButtonVisibility();
         updateJumpControlsVisibility();
@@ -413,18 +435,8 @@ public class ChronicleScreen extends Screen {
 
     private void updateAddEventButtonVisibility() {
         boolean visible = canAddEvent() && !showAddPanel && selectedSection == null && selectedHallUuid == null;
-        if (addEventButton != null) {
-            addEventButton.visible = visible;
-            addEventButton.active = visible;
-        }
-        if (settingsButton != null) {
-            settingsButton.visible = visible;
-            settingsButton.active = visible;
-        }
-        if (infoButton != null) {
-            infoButton.visible = visible;
-            infoButton.active = visible;
-        }
+        showAddButton = visible;
+        showInfoButton = visible;
     }
 
     private void updateJumpControlsVisibility() {
@@ -464,6 +476,13 @@ public class ChronicleScreen extends Screen {
             syncEventDateFromCurrent(RPGTimelineApi.getCalendarDefinition());
         }
         updateAddPanelVisibility();
+        if (showAddPanel && titleBox != null) {
+            titleBox.setFocused(true);
+            titleBox.setCanLoseFocus(true);
+            titleBox.setCursorPosition(0);
+            titleBox.setHighlightPos(0);
+            setFocused(titleBox);
+        }
     }
 
     private void closeDetailPanel() {
@@ -500,14 +519,15 @@ public class ChronicleScreen extends Screen {
         updateLayout();
         layoutTopButtons();
         renderBackground(g, mouseX, mouseY, partialTick);
-        g.fill(panelX, panelY, panelX + panelW, panelY + panelH, BG_COLOR);
+        drawTabs(g, mouseX, mouseY);
+        drawPanelBackground(g);
 
         nodeBounds.clear();
         hallRowBounds.clear();
         hoveredEntry = null;
 
         drawHeader(g);
-        drawTabs(g, mouseX, mouseY);
+        drawTopButtons(g, mouseX, mouseY);
         if (!shouldHideJumpControls()) {
             drawJumpLabel(g);
         }
@@ -520,11 +540,11 @@ public class ChronicleScreen extends Screen {
 
         updateDetailPanelVisibility();
         if (showAddPanel) {
-            drawAddPanel(g);
+            drawAddPanel(g, mouseX, mouseY);
         } else if (selectedSection != null) {
-            drawDetailPanel(g, selectedSection);
+            drawDetailPanel(g, selectedSection, mouseX, mouseY);
         } else if (selectedHallUuid != null) {
-            drawHallOfFameDetailPanel(g, selectedHallUuid);
+            drawHallOfFameDetailPanel(g, selectedHallUuid, mouseX, mouseY);
         }
 
         if (!ChroniclePayloads.ClientState.hasSynced()) {
@@ -540,7 +560,14 @@ public class ChronicleScreen extends Screen {
             g.pose().popPose();
         }
 
-        if (infoButton != null && infoButton.visible && infoButton.isHoveredOrFocused()) {
+        if (showMonthDropdown) {
+            g.pose().pushPose();
+            g.pose().translate(0, 0, 400);
+            drawMonthDropdownList(g, mouseX, mouseY);
+            g.pose().popPose();
+        }
+
+        if (hoverInfoButton) {
             List<net.minecraft.util.FormattedCharSequence> tooltip = List.of(
                     Component.literal("Scroll: pan the timeline"),
                     Component.literal("CTRL + Scroll: zoom in/out"),
@@ -564,33 +591,100 @@ public class ChronicleScreen extends Screen {
         panelH = Math.max(0, height - margin * 2);
     }
 
-    private void layoutTopButtons() {
-        if (addEventButton == null) {
+    private void drawPanelBackground(@NotNull GuiGraphics g) {
+        if (panelW <= 0 || panelH <= 0) {
             return;
         }
+        int topColor = 0xFF171A22;
+        int bottomColor = 0xFF121318;
+        g.fillGradient(panelX, panelY, panelX + panelW, panelY + panelH, topColor, bottomColor);
+        drawPanelBorder(g);
+    }
+
+    private void drawPanelBorder(@NotNull GuiGraphics g) {
+        if (panelW <= 0 || panelH <= 0) {
+            return;
+        }
+        int x0 = panelX;
+        int y0 = panelY;
+        int x1 = panelX + panelW;
+        int y1 = panelY + panelH;
+        g.fill(x0, y0, x1, y0 + 1, CARD_BORDER);
+        g.fill(x0, y1 - 1, x1, y1, CARD_BORDER);
+        g.fill(x0, y0, x0 + 1, y1, CARD_BORDER);
+        g.fill(x1 - 1, y0, x1, y1, CARD_BORDER);
+        drawPanelOrnaments(g);
+    }
+
+    private void drawPanelOrnaments(@NotNull GuiGraphics g) {
+        int x0 = panelX;
+        int y0 = panelY;
+        int x1 = panelX + panelW;
+        int y1 = panelY + panelH;
+        int midX = panelX + panelW / 2;
+        int midY = panelY + panelH / 2;
+        int notchW = 28;
+        int notchH = 3;
+        int tickW = 3;
+        int tickH = 16;
+
+        g.fill(midX - notchW / 2, y0, midX + notchW / 2, y0 + notchH, CARD_BORDER);
+        g.fill(midX - notchW / 2, y1 - notchH, midX + notchW / 2, y1, CARD_BORDER);
+        g.fill(x0, midY - tickH / 2, x0 + tickW, midY + tickH / 2, CARD_BORDER);
+        g.fill(x1 - tickW, midY - tickH / 2, x1, midY + tickH / 2, CARD_BORDER);
+
+        int cornerSize = 6;
+        g.fill(x0, y0, x0 + cornerSize, y0 + 2, CARD_BORDER);
+        g.fill(x0, y0, x0 + 2, y0 + cornerSize, CARD_BORDER);
+        g.fill(x1 - cornerSize, y0, x1, y0 + 2, CARD_BORDER);
+        g.fill(x1 - 2, y0, x1, y0 + cornerSize, CARD_BORDER);
+        g.fill(x0, y1 - 2, x0 + cornerSize, y1, CARD_BORDER);
+        g.fill(x0, y1 - cornerSize, x0 + 2, y1, CARD_BORDER);
+        g.fill(x1 - cornerSize, y1 - 2, x1, y1, CARD_BORDER);
+        g.fill(x1 - 2, y1 - cornerSize, x1, y1, CARD_BORDER);
+    }
+
+    private void layoutTopButtons() {
         int y = panelY + 12;
-        int gap = 4;
-        int smallW = 20;
+        int gap = 6;
+        int size = 12;
+        addButtonW = size;
+        addButtonH = size;
+        infoButtonW = size;
+        infoButtonH = size;
         int right = panelX + panelW - PANEL_PADDING;
 
-        if (infoButton != null) {
-            infoButton.setX(right - smallW);
-            infoButton.setY(y);
-            infoButton.setWidth(smallW);
-            infoButton.setHeight(20);
-            right -= smallW + gap;
+        infoButtonX = right - infoButtonW;
+        infoButtonY = y;
+        right -= infoButtonW + gap;
+
+        addButtonX = right - addButtonW;
+        addButtonY = y;
+    }
+
+    private void drawTopButtons(@NotNull GuiGraphics g, int mouseX, int mouseY) {
+        hoverAddButton = showAddButton && inRect(mouseX, mouseY, addButtonX, addButtonY, addButtonW, addButtonH);
+        hoverInfoButton = showInfoButton && inRect(mouseX, mouseY, infoButtonX, infoButtonY, infoButtonW, infoButtonH);
+
+        if (showAddButton) {
+            drawTopButton(g, addButtonX, addButtonY, addButtonW, addButtonH, "+", hoverAddButton);
         }
-        if (settingsButton != null) {
-            settingsButton.setX(right - smallW);
-            settingsButton.setY(y);
-            settingsButton.setWidth(smallW);
-            settingsButton.setHeight(20);
-            right -= smallW + gap;
+        if (showInfoButton) {
+            drawTopButton(g, infoButtonX, infoButtonY, infoButtonW, infoButtonH, "?", hoverInfoButton);
         }
-        addEventButton.setX(right - 96);
-        addEventButton.setY(y);
-        addEventButton.setWidth(96);
-        addEventButton.setHeight(20);
+    }
+
+    private void drawTopButton(@NotNull GuiGraphics g, int x, int y, int w, int h, String label, boolean hover) {
+        int fill = hover ? 0xFF2B2F3A : PANEL_COLOR;
+        g.fill(x, y, x + w, y + h, fill);
+        g.fill(x, y, x + w, y + 1, CARD_BORDER);
+        g.fill(x, y + h - 1, x + w, y + h, CARD_BORDER);
+        g.fill(x, y, x + 1, y + h, CARD_BORDER);
+        g.fill(x + w - 1, y, x + w, y + h, CARD_BORDER);
+        int textW = font.width(label);
+        int textX = x + (w - textW) / 2;
+        int textY = y + Math.max(1, (h - font.lineHeight) / 2 + 1);
+        g.drawString(font, label, textX, textY, 0xFFEDEDED, false);
     }
 
     private void updateScrollBounds() {
@@ -712,7 +806,13 @@ public class ChronicleScreen extends Screen {
             g.fill((int) x, railY - 5, (int) x + 1, railY + 5, 0xFF4D5262);
             String label = formatTickLabel(def, day);
             int width = font.width(label);
-            g.drawString(font, label, (int) (x - width / 2.0f), labelY, 0xFF8F93A2, false);
+            int labelX = (int) (x - width / 2.0f);
+            if (labelX < railLeft) {
+                labelX = railLeft;
+            } else if (labelX + width > railRight) {
+                labelX = railRight - width;
+            }
+            g.drawString(font, label, labelX, labelY, 0xFF8F93A2, false);
         }
 
         if (scale == ChronicleScale.DAY) {
@@ -809,8 +909,7 @@ public class ChronicleScreen extends Screen {
     }
 
     private void drawHeader(@NotNull GuiGraphics g) {
-        Component title = Component.literal(buildChronicleTitle())
-                .setStyle(Style.EMPTY.withFont(GOTHIC12_FONT_ID));
+        Component title = Component.literal(buildChronicleTitle());
         g.drawString(font, title, panelX + 18, panelY + 18, 0xFFEDEDED, false);
     }
 
@@ -853,13 +952,57 @@ public class ChronicleScreen extends Screen {
 
         drawTab(g, x, y, w, h, "Server", tab == ChronicleTab.SERVER);
         drawTab(g, x + w + 8, y, w, h, "Personal", tab == ChronicleTab.PERSONAL);
-        drawTab(g, x + (w + 8) * 2, y, w, h, "Hall of Fame", tab == ChronicleTab.HALL_OF_FAME);
+        drawTabWithIcon(g, x + (w + 8) * 2, y, w, h, "Hall of Fame", tab == ChronicleTab.HALL_OF_FAME);
     }
 
     private void drawTab(@NotNull GuiGraphics g, int x, int y, int w, int h, String label, boolean active) {
-        int color = active ? BG_COLOR : TAB_INACTIVE_COLOR;
+        int activeColor = 0xFF171A22;
+        int color = active ? activeColor : TAB_INACTIVE_COLOR;
         g.fill(x, y, x + w, y + h, color);
-        g.drawString(font, label, x + 8, y + 6, 0xFFEDEDED, false);
+        if (active) {
+            g.fill(x, y, x + w, y + 1, CARD_BORDER);
+            g.fill(x, y + h - 1, x + w, y + h, CARD_BORDER);
+            g.fill(x, y, x + 1, y + h, CARD_BORDER);
+            g.fill(x + w - 1, y, x + w, y + h, CARD_BORDER);
+            drawTabOrnaments(g, x, y, w);
+        }
+        int textW = font.width(label);
+        int textX = x + (w - textW) / 2;
+        g.drawString(font, label, textX, y + 6, 0xFFEDEDED, false);
+    }
+
+    private void drawTabWithIcon(@NotNull GuiGraphics g, int x, int y, int w, int h, String label, boolean active) {
+        int activeColor = 0xFF171A22;
+        int color = active ? activeColor : TAB_INACTIVE_COLOR;
+        g.fill(x, y, x + w, y + h, color);
+        if (active) {
+            g.fill(x, y, x + w, y + 1, CARD_BORDER);
+            g.fill(x, y + h - 1, x + w, y + h, CARD_BORDER);
+            g.fill(x, y, x + 1, y + h, CARD_BORDER);
+            g.fill(x + w - 1, y, x + w, y + h, CARD_BORDER);
+            drawTabOrnaments(g, x, y, w);
+        }
+        int iconSize = 8;
+        int gap = 6;
+        int iconY = y + 6;
+        int textW = font.width(label);
+        int contentW = iconSize + gap + textW;
+        int contentX = x + (w - contentW) / 2;
+        int iconX = contentX;
+        int textX = iconX + iconSize + gap;
+        g.pose().pushPose();
+        g.pose().scale(0.5f, 0.5f, 1.0f);
+        g.blit(HALL_OF_FAME_ICON, iconX * 2, iconY * 2, 0, 0, 16, 16, 16, 16);
+        g.pose().popPose();
+        g.drawString(font, label, textX, y + 6, 0xFFEDEDED, false);
+    }
+
+    private void drawTabOrnaments(@NotNull GuiGraphics g, int x, int y, int w) {
+        int c = CARD_BORDER;
+        g.fill(x + 2, y + 2, x + 8, y + 3, c);
+        g.fill(x + 2, y + 2, x + 3, y + 8, c);
+        g.fill(x + w - 8, y + 2, x + w - 2, y + 3, c);
+        g.fill(x + w - 3, y + 2, x + w - 2, y + 8, c);
     }
 
     private void drawJumpLabel(@NotNull GuiGraphics g) {
@@ -876,6 +1019,10 @@ public class ChronicleScreen extends Screen {
         int w = jumpMonthW;
         int h = jumpMonthH;
         g.fill(x, y, x + w, y + h, PANEL_COLOR);
+        g.fill(x, y, x + w, y + 1, CARD_BORDER);
+        g.fill(x, y + h - 1, x + w, y + h, CARD_BORDER);
+        g.fill(x, y, x + 1, y + h, CARD_BORDER);
+        g.fill(x + w - 1, y, x + w, y + h, CARD_BORDER);
         String label = jumpMonthNames.get(Math.max(0, Math.min(jumpMonthIndex, jumpMonthNames.size() - 1)));
         g.drawString(font, label, x + 6, y + 5, 0xFFEDEDED, false);
 
@@ -884,10 +1031,6 @@ public class ChronicleScreen extends Screen {
         g.fill(caretX, caretY, caretX + 6, caretY + 1, 0xFFB0B4C2);
         g.fill(caretX + 1, caretY + 1, caretX + 5, caretY + 2, 0xFFB0B4C2);
         g.fill(caretX + 2, caretY + 2, caretX + 4, caretY + 3, 0xFFB0B4C2);
-
-        if (showMonthDropdown) {
-            drawMonthDropdownList(g);
-        }
     }
 
     private void drawEventMonthDropdownControl(@NotNull GuiGraphics g) {
@@ -899,6 +1042,10 @@ public class ChronicleScreen extends Screen {
         int w = eventMonthW;
         int h = eventMonthH;
         g.fill(x, y, x + w, y + h, PANEL_COLOR);
+        g.fill(x, y, x + w, y + 1, CARD_BORDER);
+        g.fill(x, y + h - 1, x + w, y + h, CARD_BORDER);
+        g.fill(x, y, x + 1, y + h, CARD_BORDER);
+        g.fill(x + w - 1, y, x + w, y + h, CARD_BORDER);
         String label = eventMonthNames.get(Math.max(0, Math.min(eventMonthIndex, eventMonthNames.size() - 1)));
         g.drawString(font, label, x + 6, y + 5, 0xFFEDEDED, false);
 
@@ -911,7 +1058,7 @@ public class ChronicleScreen extends Screen {
         // Dropdown list is rendered after widgets for proper z-order.
     }
 
-    private void drawMonthDropdownList(@NotNull GuiGraphics g) {
+    private void drawMonthDropdownList(@NotNull GuiGraphics g, int mouseX, int mouseY) {
         if (jumpMonthNames.isEmpty()) {
             return;
         }
@@ -920,17 +1067,24 @@ public class ChronicleScreen extends Screen {
         int listH = jumpMonthNames.size() * rowH;
         int listX = jumpMonthX;
         int listY = jumpMonthY + jumpMonthH + 2;
-        int maxY = panelY + panelH - 8;
-        if (listY + listH > maxY) {
-            listY = jumpMonthY - 2 - listH;
-        }
         g.fill(listX, listY, listX + listW, listY + listH, CARD_COLOR);
+        g.fill(listX, listY, listX + listW, listY + 1, CARD_BORDER);
+        g.fill(listX, listY + listH - 1, listX + listW, listY + listH, CARD_BORDER);
+        g.fill(listX, listY, listX + 1, listY + listH, CARD_BORDER);
+        g.fill(listX + listW - 1, listY, listX + listW, listY + listH, CARD_BORDER);
         for (int i = 0; i < jumpMonthNames.size(); i++) {
             int rowY = listY + i * rowH;
+            boolean hover = inRect(mouseX, mouseY, listX, rowY, listW, rowH);
             if (i == jumpMonthIndex) {
                 g.fill(listX, rowY, listX + listW, rowY + rowH, PANEL_COLOR);
+            } else if (hover) {
+                g.fill(listX, rowY, listX + listW, rowY + rowH, TAB_INACTIVE_COLOR);
             }
-            g.drawString(font, jumpMonthNames.get(i), listX + 6, rowY + 5, 0xFFEDEDED, false);
+            int textX = hover ? listX + 18 : listX + 12;
+            g.drawString(font, jumpMonthNames.get(i), textX, rowY + 5, 0xFFEDEDED, false);
+            if (hover) {
+                drawDropdownOrnament(g, listX + 6, rowY + 5);
+            }
         }
     }
 
@@ -940,19 +1094,35 @@ public class ChronicleScreen extends Screen {
         }
         DropdownLayout layout = buildEventMonthDropdownLayout();
         g.fill(layout.x, layout.y, layout.x + layout.w, layout.y + layout.h, CARD_COLOR);
+        g.fill(layout.x, layout.y, layout.x + layout.w, layout.y + 1, CARD_BORDER);
+        g.fill(layout.x, layout.y + layout.h - 1, layout.x + layout.w, layout.y + layout.h, CARD_BORDER);
+        g.fill(layout.x, layout.y, layout.x + 1, layout.y + layout.h, CARD_BORDER);
+        g.fill(layout.x + layout.w - 1, layout.y, layout.x + layout.w, layout.y + layout.h, CARD_BORDER);
         for (int i = 0; i < layout.visibleCount; i++) {
             int idx = layout.startIndex + i;
             if (idx >= eventMonthNames.size()) {
                 break;
             }
             int rowY = layout.y + i * layout.rowH;
+            boolean hover = inRect(mouseX, mouseY, layout.x, rowY, layout.w, layout.rowH);
             if (idx == eventMonthIndex) {
                 g.fill(layout.x, rowY, layout.x + layout.w, rowY + layout.rowH, PANEL_COLOR);
-            } else if (inRect(mouseX, mouseY, layout.x, rowY, layout.w, layout.rowH)) {
+            } else if (hover) {
                 g.fill(layout.x, rowY, layout.x + layout.w, rowY + layout.rowH, TAB_INACTIVE_COLOR);
             }
-            g.drawString(font, eventMonthNames.get(idx), layout.x + 6, rowY + 5, 0xFFEDEDED, false);
+            int textX = hover ? layout.x + 18 : layout.x + 12;
+            g.drawString(font, eventMonthNames.get(idx), textX, rowY + 5, 0xFFEDEDED, false);
+            if (hover) {
+                drawDropdownOrnament(g, layout.x + 6, rowY + 5);
+            }
         }
+    }
+
+    private void drawDropdownOrnament(@NotNull GuiGraphics g, int x, int y) {
+        int c = 0xFFB0B4C2;
+        g.fill(x, y + 3, x + 4, y + 4, c);
+        g.fill(x + 1, y + 2, x + 3, y + 3, c);
+        g.fill(x + 1, y + 4, x + 3, y + 5, c);
     }
 
     private void drawTimeline(@NotNull GuiGraphics g, int mouseX, int mouseY) {
@@ -981,6 +1151,15 @@ public class ChronicleScreen extends Screen {
         int railY = timelineTop + (timelineBottom - timelineTop) / 2;
         railLeft = panelX + 32;
         railRight = panelX + panelW - 32;
+
+        timelineAreaX = panelX + PANEL_PADDING;
+        timelineAreaY = timelineTop;
+        timelineAreaW = panelW - PANEL_PADDING * 2;
+        timelineAreaH = Math.max(0, timelineBottom - timelineTop);
+        g.fill(timelineAreaX, timelineAreaY, timelineAreaX + timelineAreaW, timelineAreaY + timelineAreaH, BG_COLOR);
+        drawTimelineBorder(g);
+        g.enableScissor(timelineAreaX, timelineAreaY, timelineAreaX + timelineAreaW, timelineAreaY + timelineAreaH);
+
         g.fill(railLeft, railY - 1, railRight, railY + 1, 0xFF3A3D4A);
 
         List<ChronicleEntry> allEntries = getEntriesForTab();
@@ -1036,9 +1215,8 @@ public class ChronicleScreen extends Screen {
             }
             int sectionIndex = (int) Math.floor((dayIndex - viewStart) / sectionSpan);
             sectionIndex = Math.max(0, Math.min(sectionIndex, sectionCount - 1));
-            SectionBucket bucket = sections.computeIfAbsent(sectionIndex,
-                    idx -> new SectionBucket(idx, clampAnchorDay(viewStart, sectionSpan, idx)));
-            bucket.add(entry);
+            SectionBucket bucket = sections.computeIfAbsent(sectionIndex, SectionBucket::new);
+            bucket.add(entry, maxUnitIndex);
         }
         float currentX = railLeft + (currentUnitTime - viewStartUnit) * unitSpacing;
         if (currentX >= railLeft && currentX <= railRight) {
@@ -1055,7 +1233,7 @@ public class ChronicleScreen extends Screen {
             if (bucket == null) {
                 continue;
             }
-            float x = railLeft + (bucket.anchorDay - viewStartUnit) * unitSpacing;
+            float x = railLeft + (float) ((bucket.anchorTime - viewStartUnit) * unitSpacing);
             if (x < railLeft || x > railRight) {
                 continue;
             }
@@ -1102,17 +1280,42 @@ public class ChronicleScreen extends Screen {
         }
 
         if (hoveredEntry != null) {
+            g.disableScissor();
             drawHoverTooltip(g, hoveredEntry, mouseX, mouseY);
+        } else {
+            g.disableScissor();
         }
         drawOverviewBar(g, entries);
         drawScrollbar(g);
     }
 
+    private void drawTimelineBorder(@NotNull GuiGraphics g) {
+        if (timelineAreaW <= 0 || timelineAreaH <= 0) {
+            return;
+        }
+        int x0 = timelineAreaX;
+        int y0 = timelineAreaY;
+        int x1 = timelineAreaX + timelineAreaW;
+        int y1 = timelineAreaY + timelineAreaH;
+        g.fill(x0, y0, x1, y0 + 1, CARD_BORDER);
+        g.fill(x0, y1 - 1, x1, y1, CARD_BORDER);
+        g.fill(x0, y0, x0 + 1, y1, CARD_BORDER);
+        g.fill(x1 - 1, y0, x1, y1, CARD_BORDER);
+    }
+
     private void drawHallOfFame(@NotNull GuiGraphics g, int mouseX, int mouseY) {
+        drawHallOfFameBackground(g, mouseX, mouseY);
+        drawHallOfFameRows(g, mouseX, mouseY);
+    }
+
+    private void drawHallOfFameBackground(@NotNull GuiGraphics g, int mouseX, int mouseY) {
         List<HallOfFameEntry> entries = ChroniclePayloads.ClientState.getHallOfFameEntries();
         int listX = panelX + PANEL_PADDING;
         int listY = panelY + 56;
         int listW = panelW - PANEL_PADDING * 2;
+        if (selectedHallUuid != null) {
+            listW = Math.max(120, listW - DETAIL_PANEL_WIDTH);
+        }
         int listBottom = panelY + panelH - 24;
         int listH = Math.max(1, listBottom - listY);
 
@@ -1130,7 +1333,31 @@ public class ChronicleScreen extends Screen {
             }
             int rowColor = (i % 2 == 0) ? CARD_COLOR : PANEL_COLOR;
             g.fill(listX, rowY, listX + listW, rowY + rowH - 1, rowColor);
+        }
 
+        if (entries.isEmpty()) {
+            g.drawString(font, "No world-firsts recorded yet.", listX, listY + 4, 0xFF9AA0AF, false);
+        }
+    }
+
+    private void drawHallOfFameRows(@NotNull GuiGraphics g, int mouseX, int mouseY) {
+        List<HallOfFameEntry> entries = ChroniclePayloads.ClientState.getHallOfFameEntries();
+        int listX = panelX + PANEL_PADDING;
+        int listY = panelY + 56;
+        int listW = panelW - PANEL_PADDING * 2;
+        if (selectedHallUuid != null) {
+            listW = Math.max(120, listW - DETAIL_PANEL_WIDTH);
+        }
+        int listBottom = panelY + panelH - 24;
+
+        int rowH = 26;
+        int y = listY - hallScrollOffset;
+        for (int i = 0; i < entries.size(); i++) {
+            HallOfFameEntry entry = entries.get(i);
+            int rowY = y + i * rowH;
+            if (rowY + rowH < listY || rowY > listBottom) {
+                continue;
+            }
             int faceX = listX + 6;
             int faceY = rowY + 4;
             drawPlayerFace(g, entry, faceX, faceY, 16);
@@ -1140,7 +1367,14 @@ public class ChronicleScreen extends Screen {
 
             String countText = Integer.toString(entry.worldFirstCount());
             int countW = font.width(countText);
-            int countX = listX + listW - 60 - countW - 10;
+            int countAreaRight = listX + listW - 60 - 10;
+            int iconSize = 16;
+            int gap = 4;
+            int totalW = iconSize + gap + countW;
+            int countX = countAreaRight - totalW + iconSize + gap;
+            int iconX = countX - gap - iconSize;
+            int iconY = rowY + 5;
+            g.renderItem(new ItemStack(RPGTimelineItems.CHRONICLE_WORLD_FIRST.get()), iconX, iconY);
             g.drawString(font, countText, countX, rowY + 8, WORLD_FIRST_COLOR, false);
 
             int btnW = 50;
@@ -1154,17 +1388,13 @@ public class ChronicleScreen extends Screen {
 
             hallRowBounds.add(new HallRowBounds(entry.playerUuid(), btnX, btnY, btnW, btnH));
         }
-
-        if (entries.isEmpty()) {
-            g.drawString(font, "No world-firsts recorded yet.", listX, listY + 4, 0xFF9AA0AF, false);
-        }
     }
 
-    private void drawHallOfFameDetailPanel(@NotNull GuiGraphics g, String playerUuid) {
+    private void drawHallOfFameDetailPanel(@NotNull GuiGraphics g, String playerUuid, int mouseX, int mouseY) {
         List<ChronicleEntry> entries = ChroniclePayloads.ClientState.getHallOfFameDetails(playerUuid);
         String playerName = findHallOfFameName(playerUuid);
 
-        int panelWidth = 260;
+        int panelWidth = DETAIL_PANEL_WIDTH;
         int panelX = width - panelWidth;
         int panelY = 0;
         int panelHeight = height;
@@ -1175,13 +1405,20 @@ public class ChronicleScreen extends Screen {
         detailPanelH = panelHeight;
 
         g.fill(panelX, panelY, panelX + panelWidth, panelY + panelHeight, PANEL_COLOR);
+        drawDetailPanelBorder(g, panelX, panelY, panelHeight);
+        drawDetailPanelBorder(g, panelX, panelY, panelHeight);
 
-        if (closeDetailButton != null) {
-            closeDetailButton.setX(panelX + 12);
-            closeDetailButton.setY(panelY + panelHeight - 30);
-            closeDetailButton.setWidth(panelWidth - 24);
-            closeDetailButton.setHeight(20);
-        }
+        closeButtonX = panelX + 12;
+        closeButtonY = panelY + panelHeight - 30;
+        closeButtonW = panelWidth - 24;
+        closeButtonH = 20;
+        drawDetailCloseButton(g, mouseX, mouseY);
+
+        int headerX = panelX + 12;
+        int headerY = panelY + 12;
+        ItemStack headerIcon = new ItemStack(RPGTimelineItems.CHRONICLE_WORLD_FIRST.get());
+        g.renderItem(headerIcon, headerX, headerY);
+        g.drawString(font, "World Firsts - " + playerName, headerX + 20, headerY + 4, WORLD_FIRST_COLOR, false);
 
         int innerX = panelX + 12;
         int innerW = panelWidth - 24;
@@ -1192,7 +1429,7 @@ public class ChronicleScreen extends Screen {
         int textWidth = innerW - iconSize - 8;
 
         String header = playerName.isBlank() ? "World Firsts" : "World Firsts - " + playerName;
-        int contentAreaY = panelY + 12;
+        int contentAreaY = headerY + lineHeight + 10;
         int contentAreaH = panelHeight - 56;
         int contentHeight = lineHeight + 12;
         for (ChronicleEntry entry : entries) {
@@ -1203,10 +1440,8 @@ public class ChronicleScreen extends Screen {
         detailScrollOffset = (int) clamp(detailScrollOffset, 0, detailScrollMax);
 
         int y = contentAreaY - detailScrollOffset;
-        g.drawString(font, header, innerX, y, WORLD_FIRST_COLOR, false);
-        y += lineHeight + 6;
         g.fill(innerX, y, innerX + innerW, y + 1, CARD_BORDER);
-        y += 6;
+        y += 8;
 
         if (entries.isEmpty()) {
             g.drawString(font, "No world-firsts yet.", innerX, y, 0xFF9AA0AF, false);
@@ -1277,7 +1512,14 @@ public class ChronicleScreen extends Screen {
             title = title.copy().withStyle(ChatFormatting.GOLD);
         }
         stack.set(DataComponents.CUSTOM_NAME, title);
+        List<Component> lines = getTooltipFromItem(minecraft, stack);
+        int maxWidth = 0;
+        for (Component line : lines) {
+            maxWidth = Math.max(maxWidth, font.width(line));
+        }
+        ChronicleItemTooltipClient.setExpectedWidth(maxWidth);
         g.renderTooltip(font, stack, mouseX, mouseY);
+        ChronicleItemTooltipClient.clearExpectedWidth();
     }
 
     private ItemStack tooltipStackForEntry(ChronicleEntry entry) {
@@ -1290,6 +1532,7 @@ public class ChronicleScreen extends Screen {
         return new ItemStack(RPGTimelineItems.CHRONICLE_ADVANCEMENT.get());
     }
 
+
     private DropdownLayout buildEventMonthDropdownLayout() {
         int rowH = 18;
         int total = eventMonthNames.size();
@@ -1297,21 +1540,19 @@ public class ChronicleScreen extends Screen {
         int listW = eventMonthW;
         int maxY = addPanelY + addPanelH - 8;
         int below = maxY - (eventMonthY + eventMonthH + 2);
-        int above = (eventMonthY - 2) - addPanelY;
-        boolean useBelow = below >= above;
-        int available = Math.max(rowH, useBelow ? below : above);
+        int available = Math.max(rowH, below);
         int maxRows = Math.max(1, available / rowH);
         int visibleCount = Math.min(total, maxRows);
         int listH = visibleCount * rowH;
-        int listY = useBelow ? eventMonthY + eventMonthH + 2 : eventMonthY - 2 - listH;
+        int listY = eventMonthY + eventMonthH + 2;
 
         int maxStart = Math.max(0, total - visibleCount);
         eventMonthScroll = Math.max(0, Math.min(eventMonthScroll, maxStart));
 
         return new DropdownLayout(listX, listY, listW, listH, rowH, visibleCount, eventMonthScroll);
     }
-    private void drawDetailPanel(@NotNull GuiGraphics g, SectionBucket bucket) {
-        int panelWidth = 260;
+    private void drawDetailPanel(@NotNull GuiGraphics g, SectionBucket bucket, int mouseX, int mouseY) {
+        int panelWidth = DETAIL_PANEL_WIDTH;
         int panelX = width - panelWidth;
         int panelY = 0;
         int panelHeight = height;
@@ -1323,12 +1564,11 @@ public class ChronicleScreen extends Screen {
 
         g.fill(panelX, panelY, panelX + panelWidth, panelY + panelHeight, PANEL_COLOR);
 
-        if (closeDetailButton != null) {
-            closeDetailButton.setX(panelX + 12);
-            closeDetailButton.setY(panelY + panelHeight - 30);
-            closeDetailButton.setWidth(panelWidth - 24);
-            closeDetailButton.setHeight(20);
-        }
+        closeButtonX = panelX + 12;
+        closeButtonY = panelY + panelHeight - 30;
+        closeButtonW = panelWidth - 24;
+        closeButtonH = 20;
+        drawDetailCloseButton(g, mouseX, mouseY);
 
         int innerX = panelX + 12;
         int innerW = panelWidth - 24;
@@ -1363,8 +1603,10 @@ public class ChronicleScreen extends Screen {
             int headerColor = headerColorForType(group.type());
             List<ChronicleDetail> drilldown = resolveDrilldown(group);
 
-            g.drawString(font, group.title(), innerX, y, headerColor, false);
-            y += lineHeight + 6;
+            ItemStack headerIcon = headerIconForType(group.type());
+            g.renderItem(headerIcon, innerX, y - 1);
+            g.drawString(font, group.title(), innerX + iconSize + 6, y, headerColor, false);
+            y += lineHeight + 10;
             g.fill(innerX, y, innerX + innerW, y + 1, CARD_BORDER);
             y += 6;
 
@@ -1423,13 +1665,62 @@ public class ChronicleScreen extends Screen {
         drawDetailScrollbar(g, contentAreaY, contentAreaH);
     }
 
-    private void drawAddPanel(@NotNull GuiGraphics g) {
+    private void drawAddPanel(@NotNull GuiGraphics g, int mouseX, int mouseY) {
         refreshEventMonthList(RPGTimelineApi.getCalendarDefinition());
         layoutAddPanel();
         g.fill(addPanelX, addPanelY, addPanelX + addPanelW, addPanelY + addPanelH, PANEL_COLOR);
+        drawAddPanelBorder(g);
         g.drawString(font, "Add Event", addPanelX + 12, addPanelY + 10, 0xFFEDEDED, false);
         g.drawString(font, "Date:", addPanelX + 16, addPanelY + 66 + 5, 0xFFB0B4C2, false);
         drawEventMonthDropdownControl(g);
+        drawAddPanelButtons(g, mouseX, mouseY);
+    }
+
+    private void drawAddPanelBorder(@NotNull GuiGraphics g) {
+        int x0 = addPanelX;
+        int y0 = addPanelY;
+        int x1 = addPanelX + addPanelW;
+        int y1 = addPanelY + addPanelH;
+        g.fill(x0, y0, x1, y0 + 1, CARD_BORDER);
+        g.fill(x0, y1 - 1, x1, y1, CARD_BORDER);
+        g.fill(x0, y0, x0 + 1, y1, CARD_BORDER);
+        g.fill(x1 - 1, y0, x1, y1, CARD_BORDER);
+        int midX = addPanelX + addPanelW / 2;
+        g.fill(midX - 10, y0, midX + 10, y0 + 2, CARD_BORDER);
+    }
+
+    private void drawDetailPanelBorder(@NotNull GuiGraphics g, int x, int y, int h) {
+        int x0 = x;
+        int y0 = y;
+        int y1 = y + h;
+        g.fill(x0, y0, x0 + 1, y1, CARD_BORDER);
+        int midY = y + h / 2;
+        g.fill(x0, midY - 12, x0 + 2, midY + 12, CARD_BORDER);
+        g.fill(x0, y0 + 8, x0 + 3, y0 + 9, CARD_BORDER);
+        g.fill(x0, y1 - 9, x0 + 3, y1 - 8, CARD_BORDER);
+    }
+
+    private void drawAddPanelButtons(@NotNull GuiGraphics g, int mouseX, int mouseY) {
+        boolean suppressHover = false;
+        if (showEventMonthDropdown) {
+            DropdownLayout layout = buildEventMonthDropdownLayout();
+            suppressHover = inRect(mouseX, mouseY, layout.x, layout.y, layout.w, layout.h);
+        }
+        if (suppressHover) {
+            hoverSubmitButton = false;
+            hoverCancelButton = false;
+        } else {
+            hoverSubmitButton = inRect(mouseX, mouseY, submitButtonX, submitButtonY, submitButtonW, submitButtonH);
+            hoverCancelButton = inRect(mouseX, mouseY, cancelButtonX, cancelButtonY, cancelButtonW, cancelButtonH);
+        }
+
+        drawTopButton(g, submitButtonX, submitButtonY, submitButtonW, submitButtonH, "Submit", hoverSubmitButton);
+        drawTopButton(g, cancelButtonX, cancelButtonY, cancelButtonW, cancelButtonH, "Cancel", hoverCancelButton);
+    }
+
+    private void drawDetailCloseButton(@NotNull GuiGraphics g, int mouseX, int mouseY) {
+        hoverCloseButton = inRect(mouseX, mouseY, closeButtonX, closeButtonY, closeButtonW, closeButtonH);
+        drawTopButton(g, closeButtonX, closeButtonY, closeButtonW, closeButtonH, "Close", hoverCloseButton);
     }
 
     private List<ChronicleEntry> buildSectionGroups(SectionBucket bucket) {
@@ -1503,6 +1794,16 @@ public class ChronicleScreen extends Screen {
         return new ItemStack(Items.PAPER);
     }
 
+    private ItemStack headerIconForType(ChronicleEntryType type) {
+        if (type == ChronicleEntryType.ADMIN_NOTE) {
+            return new ItemStack(RPGTimelineItems.CHRONICLE_NOTE.get());
+        }
+        if (type == ChronicleEntryType.WORLD_FIRST) {
+            return new ItemStack(RPGTimelineItems.CHRONICLE_WORLD_FIRST.get());
+        }
+        return new ItemStack(RPGTimelineItems.CHRONICLE_ADVANCEMENT.get());
+    }
+
     private void drawDetailScrollbar(@NotNull GuiGraphics g, int contentY, int contentH) {
         int barW = 6;
         int barX = detailPanelX + detailPanelW - barW - 6;
@@ -1540,18 +1841,6 @@ public class ChronicleScreen extends Screen {
                 ? ChroniclePayloads.ClientState.getServerEntries()
                 : ChroniclePayloads.ClientState.getPersonalEntries();
         return entries == null ? List.of() : entries;
-    }
-
-    private long clampAnchorDay(double viewStart, double sectionSpan, int sectionIndex) {
-        double anchor = viewStart + sectionSpan * (sectionIndex + 0.5);
-        long day = Math.round(anchor);
-        if (day < 0L) {
-            day = 0L;
-        }
-        if (day > maxUnitIndex) {
-            day = maxUnitIndex;
-        }
-        return day;
     }
 
     private ChronicleEntry buildGroupedEntry(List<ChronicleEntry> entries, NodeCategory category, long anchorDay) {
@@ -1926,6 +2215,31 @@ public class ChronicleScreen extends Screen {
         updateLayout();
         if (button == 0) {
             if ((selectedSection != null || selectedHallUuid != null)
+                    && inRect(mouseX, mouseY, closeButtonX, closeButtonY, closeButtonW, closeButtonH)) {
+                closeDetailPanel();
+                return true;
+            }
+            if (showAddPanel) {
+                if (handleEventMonthClick(mouseX, mouseY)) {
+                    return true;
+                }
+                if (inRect(mouseX, mouseY, submitButtonX, submitButtonY, submitButtonW, submitButtonH)) {
+                    submitAdminEvent();
+                    return true;
+                }
+                if (inRect(mouseX, mouseY, cancelButtonX, cancelButtonY, cancelButtonW, cancelButtonH)) {
+                    toggleAddPanel();
+                    return true;
+                }
+            }
+            if (showAddButton && inRect(mouseX, mouseY, addButtonX, addButtonY, addButtonW, addButtonH)) {
+                toggleAddPanel();
+                return true;
+            }
+            if (showInfoButton && inRect(mouseX, mouseY, infoButtonX, infoButtonY, infoButtonW, infoButtonH)) {
+                return true;
+            }
+            if ((selectedSection != null || selectedHallUuid != null)
                     && inRect(mouseX, mouseY, detailScrollBarX, detailScrollHandleY, detailScrollBarW, detailScrollHandleH)) {
                 draggingDetailScroll = true;
                 detailDragOffset = (int) mouseY - detailScrollHandleY;
@@ -1936,9 +2250,6 @@ public class ChronicleScreen extends Screen {
                 dragStartMouseX = (int) mouseX;
                 dragHandleGrabOffset = (int) mouseX - scrollHandleX;
                 snapToLatest = false;
-                return true;
-            }
-            if (showAddPanel && handleEventMonthClick(mouseX, mouseY)) {
                 return true;
             }
             if (handleJumpMonthClick(mouseX, mouseY)) {
@@ -2070,10 +2381,6 @@ public class ChronicleScreen extends Screen {
             int listH = jumpMonthNames.size() * rowH;
             int listX = jumpMonthX;
             int listY = jumpMonthY + jumpMonthH + 2;
-            int maxY = panelY + panelH - 8;
-            if (listY + listH > maxY) {
-                listY = jumpMonthY - 2 - listH;
-            }
             if (inRect(mouseX, mouseY, listX, listY, listW, listH)) {
                 int idx = (int) ((mouseY - listY) / rowH);
                 if (idx >= 0 && idx < jumpMonthNames.size()) {
@@ -2144,17 +2451,19 @@ public class ChronicleScreen extends Screen {
 
     private static final class SectionBucket {
         private final int index;
-        private final long anchorDay;
+        private double anchorTime;
+        private long anchorDay;
+        private long totalDays;
+        private int totalCount;
         private final List<ChronicleEntry> notes = new ArrayList<>();
         private final List<ChronicleEntry> worldFirsts = new ArrayList<>();
         private final List<ChronicleEntry> others = new ArrayList<>();
 
-        private SectionBucket(int index, long anchorDay) {
+        private SectionBucket(int index) {
             this.index = index;
-            this.anchorDay = anchorDay;
         }
 
-        private void add(ChronicleEntry entry) {
+        private void add(ChronicleEntry entry, long maxUnitIndex) {
             if (entry == null) {
                 return;
             }
@@ -2165,6 +2474,27 @@ public class ChronicleScreen extends Screen {
             } else {
                 others.add(entry);
             }
+            updateAnchor(entry.dayIndex(), maxUnitIndex);
+        }
+
+        private void updateAnchor(long dayIndex, long maxUnitIndex) {
+            totalDays += dayIndex;
+            totalCount++;
+            if (totalCount <= 0) {
+                return;
+            }
+            anchorTime = totalDays / (double) totalCount;
+            anchorDay = clampDay(Math.round(anchorTime), maxUnitIndex);
+        }
+
+        private static long clampDay(long day, long maxUnitIndex) {
+            if (day < 0L) {
+                return 0L;
+            }
+            if (day > maxUnitIndex) {
+                return maxUnitIndex;
+            }
+            return day;
         }
     }
 
@@ -2241,4 +2571,5 @@ public class ChronicleScreen extends Screen {
             this.startIndex = startIndex;
         }
     }
+
 }

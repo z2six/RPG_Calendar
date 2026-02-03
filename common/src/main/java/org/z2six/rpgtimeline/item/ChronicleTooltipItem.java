@@ -5,8 +5,11 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.inventory.tooltip.TooltipComponent;
+import org.z2six.rpgtimeline.tooltip.ChronicleItemTooltip;
 
 import java.util.List;
+import java.util.Optional;
 
 public class ChronicleTooltipItem extends Item {
 
@@ -22,5 +25,10 @@ public class ChronicleTooltipItem extends Item {
         if (description != null) {
             tooltip.add(description.copy().withStyle(ChatFormatting.GRAY));
         }
+    }
+
+    @Override
+    public Optional<TooltipComponent> getTooltipImage(ItemStack stack) {
+        return Optional.of(new ChronicleItemTooltip(stack));
     }
 }
