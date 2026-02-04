@@ -19,8 +19,10 @@ import org.z2six.rpgtimeline.chronicle.ChronicleDetail;
 import org.z2six.rpgtimeline.chronicle.ChronicleEntry;
 import org.z2six.rpgtimeline.chronicle.ChronicleEntryType;
 import org.z2six.rpgtimeline.chronicle.ChronicleScope;
+import org.z2six.rpgtimeline.chronicle.ChronicleTimeframe;
 import org.z2six.rpgtimeline.chronicle.HallOfFameEntry;
 import org.z2six.rpgtimeline.chronicle.server.ChronicleService;
+import org.z2six.rpgtimeline.chronicle.server.ChronicleTimeframeService;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -33,7 +35,7 @@ public final class ChroniclePayloads {
 
     private static final Logger LOG = LogUtils.getLogger();
 
-    private static final String PROTOCOL_VERSION = "1";
+    private static final String PROTOCOL_VERSION = "4";
 
     private ChroniclePayloads() {
         // no-op
@@ -112,6 +114,8 @@ public final class ChroniclePayloads {
         private static volatile boolean hasSynced = false;
         private static List<ChronicleEntry> serverEntries = List.of();
         private static List<ChronicleEntry> personalEntries = List.of();
+        private static List<ChronicleTimeframe> serverTimeframes = List.of();
+        private static List<ChronicleTimeframe> personalTimeframes = List.of();
         private static List<HallOfFameEntry> hallOfFameEntries = List.of();
         private static final java.util.Map<String, List<ChronicleEntry>> hallOfFameDetails = new java.util.HashMap<>();
 
@@ -131,6 +135,14 @@ public final class ChroniclePayloads {
             return personalEntries;
         }
 
+        public static List<ChronicleTimeframe> getServerTimeframes() {
+            return serverTimeframes;
+        }
+
+        public static List<ChronicleTimeframe> getPersonalTimeframes() {
+            return personalTimeframes;
+        }
+
         public static List<HallOfFameEntry> getHallOfFameEntries() {
             return hallOfFameEntries;
         }
@@ -142,9 +154,16 @@ public final class ChroniclePayloads {
             return hallOfFameDetails.getOrDefault(playerUuid, List.of());
         }
 
-        private static void applyFromServer(List<ChronicleEntry> server, List<ChronicleEntry> personal) {
+        private static void applyFromServer(
+                List<ChronicleEntry> server,
+                List<ChronicleEntry> personal,
+                List<ChronicleTimeframe> serverFrames,
+                List<ChronicleTimeframe> personalFrames
+        ) {
             serverEntries = server == null ? List.of() : server;
             personalEntries = personal == null ? List.of() : personal;
+            serverTimeframes = serverFrames == null ? List.of() : serverFrames;
+            personalTimeframes = personalFrames == null ? List.of() : personalFrames;
             hasSynced = true;
             LOG.debug("[ChroniclePayloads.ClientState] Applied chronicle sync (server={}, personal={})",
                     serverEntries.size(), personalEntries.size());
@@ -167,6 +186,8 @@ public final class ChroniclePayloads {
             hasSynced = false;
             serverEntries = List.of();
             personalEntries = List.of();
+            serverTimeframes = List.of();
+            personalTimeframes = List.of();
             hallOfFameEntries = List.of();
             hallOfFameDetails.clear();
             LOG.debug("[ChroniclePayloads.ClientState] Cleared client cache");
@@ -190,7 +211,12 @@ public final class ChroniclePayloads {
         }
     }
 
-    public record ChronicleSyncPayload(List<ChronicleEntry> serverEntries, List<ChronicleEntry> personalEntries)
+    public record ChronicleSyncPayload(
+            List<ChronicleEntry> serverEntries,
+            List<ChronicleEntry> personalEntries,
+            List<ChronicleTimeframe> serverTimeframes,
+            List<ChronicleTimeframe> personalTimeframes
+    )
             implements net.minecraft.network.protocol.common.custom.CustomPacketPayload {
         public static final ResourceLocation ID =
                 ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "chronicle_sync_v1");
@@ -200,6 +226,8 @@ public final class ChroniclePayloads {
                 StreamCodec.composite(
                         ByteBufCodecs.collection(ArrayList::new, ChronicleEntryCodec.STREAM_CODEC), ChronicleSyncPayload::serverEntries,
                         ByteBufCodecs.collection(ArrayList::new, ChronicleEntryCodec.STREAM_CODEC), ChronicleSyncPayload::personalEntries,
+                        ByteBufCodecs.collection(ArrayList::new, ChronicleTimeframeCodec.STREAM_CODEC), ChronicleSyncPayload::serverTimeframes,
+                        ByteBufCodecs.collection(ArrayList::new, ChronicleTimeframeCodec.STREAM_CODEC), ChronicleSyncPayload::personalTimeframes,
                         ChronicleSyncPayload::new
                 );
 
@@ -309,8 +337,10 @@ public final class ChroniclePayloads {
 
             List<ChronicleEntry> serverEntries = ChronicleService.buildServerTimeline(level.getServer());
             List<ChronicleEntry> personalEntries = ChronicleService.buildPersonalTimeline(level.getServer(), player.getUUID().toString());
+            List<ChronicleTimeframe> serverFrames = ChronicleTimeframeService.buildServerTimeframes(level.getServer());
+            List<ChronicleTimeframe> personalFrames = ChronicleTimeframeService.buildPersonalTimeframes(level.getServer(), player.getUUID().toString());
 
-            PacketDistributor.sendToPlayer(player, new ChronicleSyncPayload(serverEntries, personalEntries));
+            PacketDistributor.sendToPlayer(player, new ChronicleSyncPayload(serverEntries, personalEntries, serverFrames, personalFrames));
         } catch (Throwable t) {
             LOG.error("[ChroniclePayloads] sendFullSyncToPlayer failed safely", t);
         }
@@ -320,11 +350,13 @@ public final class ChroniclePayloads {
         try {
             if (server == null) return;
             List<ChronicleEntry> serverEntries = ChronicleService.buildServerTimeline(server);
+            List<ChronicleTimeframe> serverFrames = ChronicleTimeframeService.buildServerTimeframes(server);
 
             List<ServerPlayer> players = server.getPlayerList().getPlayers();
             for (ServerPlayer sp : players) {
                 List<ChronicleEntry> personalEntries = ChronicleService.buildPersonalTimeline(server, sp.getUUID().toString());
-                PacketDistributor.sendToPlayer(sp, new ChronicleSyncPayload(serverEntries, personalEntries));
+                List<ChronicleTimeframe> personalFrames = ChronicleTimeframeService.buildPersonalTimeframes(server, sp.getUUID().toString());
+                PacketDistributor.sendToPlayer(sp, new ChronicleSyncPayload(serverEntries, personalEntries, serverFrames, personalFrames));
             }
         } catch (Throwable t) {
             LOG.error("[ChroniclePayloads] broadcastFullSync failed safely", t);
@@ -378,7 +410,12 @@ public final class ChroniclePayloads {
         try {
             context.enqueueWork(() -> {
                 try {
-                    ClientState.applyFromServer(payload.serverEntries(), payload.personalEntries());
+                    ClientState.applyFromServer(
+                            payload.serverEntries(),
+                            payload.personalEntries(),
+                            payload.serverTimeframes(),
+                            payload.personalTimeframes()
+                    );
                 } catch (Throwable t) {
                     LOG.error("[ChroniclePayloads] handleChronicleSync work failed safely", t);
                 }
@@ -487,7 +524,8 @@ public final class ChroniclePayloads {
         private static final StreamCodec<RegistryFriendlyByteBuf, ChronicleDetail> DETAIL_CODEC =
                 StreamCodec.composite(
                         ByteBufCodecs.STRING_UTF8, ChronicleDetail::title,
-                        ByteBufCodecs.STRING_UTF8, ChronicleDetail::subtitle,
+                        ByteBufCodecs.STRING_UTF8, ChronicleDetail::description,
+                        ByteBufCodecs.STRING_UTF8, ChronicleDetail::iconItemId,
                         ByteBufCodecs.VAR_LONG, ChronicleDetail::dayIndex,
                         ByteBufCodecs.STRING_UTF8, ChronicleDetail::actorUuid,
                         ByteBufCodecs.STRING_UTF8, ChronicleDetail::actorName,
@@ -590,6 +628,39 @@ public final class ChroniclePayloads {
                     iconItemId,
                     drilldown == null ? Collections.emptyList() : drilldown
             );
+        }
+
+        private static String safe(String value) {
+            return value == null ? "" : value;
+        }
+    }
+
+    private static final class ChronicleTimeframeCodec {
+        private static final StreamCodec<RegistryFriendlyByteBuf, ChronicleTimeframe> STREAM_CODEC =
+                StreamCodec.of(
+                        ChronicleTimeframeCodec::encode,
+                        ChronicleTimeframeCodec::decode
+                );
+
+        private static void encode(RegistryFriendlyByteBuf buf, ChronicleTimeframe frame) {
+            ByteBufCodecs.VAR_INT.encode(buf, Float.floatToIntBits(frame.startDay()));
+            ByteBufCodecs.VAR_INT.encode(buf, Float.floatToIntBits(frame.endDay()));
+            ByteBufCodecs.VAR_INT.encode(buf, frame.priority());
+            ByteBufCodecs.VAR_INT.encode(buf, frame.layer());
+            ByteBufCodecs.VAR_INT.encode(buf, frame.renderMode());
+            ByteBufCodecs.STRING_UTF8.encode(buf, safe(frame.renderId()));
+            ByteBufCodecs.VAR_INT.encode(buf, Float.floatToIntBits(frame.alpha()));
+        }
+
+        private static ChronicleTimeframe decode(RegistryFriendlyByteBuf buf) {
+            float start = Float.intBitsToFloat(ByteBufCodecs.VAR_INT.decode(buf));
+            float end = Float.intBitsToFloat(ByteBufCodecs.VAR_INT.decode(buf));
+            int priority = ByteBufCodecs.VAR_INT.decode(buf);
+            int layer = ByteBufCodecs.VAR_INT.decode(buf);
+            int renderMode = ByteBufCodecs.VAR_INT.decode(buf);
+            String renderId = ByteBufCodecs.STRING_UTF8.decode(buf);
+            float alpha = Float.intBitsToFloat(ByteBufCodecs.VAR_INT.decode(buf));
+            return new ChronicleTimeframe(start, end, priority, layer, renderMode, renderId, alpha);
         }
 
         private static String safe(String value) {

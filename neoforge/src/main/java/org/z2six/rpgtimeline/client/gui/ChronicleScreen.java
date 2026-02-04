@@ -1,5 +1,6 @@
 package org.z2six.rpgtimeline.client.gui;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -9,13 +10,20 @@ import com.mojang.authlib.GameProfile;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.MultiLineEditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.Util;
 import net.minecraft.network.chat.Component;
 import net.minecraft.ChatFormatting;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.z2six.rpgtimeline.Constants;
@@ -27,6 +35,7 @@ import org.z2six.rpgtimeline.chronicle.ChronicleEntry;
 import org.z2six.rpgtimeline.chronicle.ChronicleEntryType;
 import org.z2six.rpgtimeline.chronicle.ChronicleScope;
 import org.z2six.rpgtimeline.chronicle.HallOfFameEntry;
+import org.z2six.rpgtimeline.chronicle.ChronicleTimeframe;
 import org.z2six.rpgtimeline.network.ChroniclePayloads;
 import org.z2six.rpgtimeline.registry.RPGTimelineItems;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -61,6 +70,13 @@ public class ChronicleScreen extends Screen {
     private static final int NODE_BASE_OFFSET = 18;
     private static final int NODE_STACK_SPACING = 12;
     private static final int MAX_GROUP_DETAILS = 50;
+    private static final int TIMEFRAME_TILE_SIZE = 16;
+    private static final int TIMEFRAME_FADE_WIDTH = 12;
+    private static final int TIMEFRAME_ENTITY_BOX_SIZE = 128;
+    private static final int TIMEFRAME_RENDER_TILE = 0;
+    private static final int TIMEFRAME_RENDER_ENTITY = 2;
+    private static final int TIMEFRAME_LAYER_BASE = 0;
+    private static final int TIMEFRAME_LAYER_ENTITY = 2;
 
     private static final int BG_COLOR = 0xFF121318;
     private static final int PANEL_COLOR = 0xFF1B1D24;
@@ -194,6 +210,7 @@ public class ChronicleScreen extends Screen {
     private int closeButtonY = 0;
     private int closeButtonW = 0;
     private int closeButtonH = 0;
+    private final java.util.Map<String, net.minecraft.world.entity.LivingEntity> entityRenderCache = new HashMap<>();
 
     public ChronicleScreen() {
         super(Component.literal("Chronicle"));
@@ -221,6 +238,7 @@ public class ChronicleScreen extends Screen {
         updateLayout();
         this.clearWidgets();
         updateAddEventButtonVisibility();
+        entityRenderCache.clear();
 
         buildAddPanel();
         buildJumpControls();
@@ -544,7 +562,12 @@ public class ChronicleScreen extends Screen {
         } else if (selectedSection != null) {
             drawDetailPanel(g, selectedSection, mouseX, mouseY);
         } else if (selectedHallUuid != null) {
+            g.pose().pushPose();
+            g.pose().translate(0, 0, 300);
+            RenderSystem.disableDepthTest();
             drawHallOfFameDetailPanel(g, selectedHallUuid, mouseX, mouseY);
+            RenderSystem.enableDepthTest();
+            g.pose().popPose();
         }
 
         if (!ChroniclePayloads.ClientState.hasSynced()) {
@@ -886,12 +909,9 @@ public class ChronicleScreen extends Screen {
             return WORLD_FIRST_COLOR;
         }
         if (entry.type() == ChronicleEntryType.ADMIN_NOTE) {
-            return ACCENT_COLOR;
+            return 0xFFB9BCC6;
         }
-        if (entry.summary()) {
-            return 0xFF5F7DFF;
-        }
-        return 0xFF6B6F7C;
+        return 0xFF5F7DFF;
     }
 
     private static float clamp(float value, float min, float max) {
@@ -1160,8 +1180,6 @@ public class ChronicleScreen extends Screen {
         drawTimelineBorder(g);
         g.enableScissor(timelineAreaX, timelineAreaY, timelineAreaX + timelineAreaW, timelineAreaY + timelineAreaH);
 
-        g.fill(railLeft, railY - 1, railRight, railY + 1, 0xFF3A3D4A);
-
         List<ChronicleEntry> allEntries = getEntriesForTab();
         minUnitIndex = 0L;
         maxUnitIndex = currentUnitIndex;
@@ -1193,6 +1211,12 @@ public class ChronicleScreen extends Screen {
 
         float viewUnits = Math.max(1.0f, (railRight - railLeft) / unitSpacing);
         scale = chooseScaleForView(viewUnits, def);
+
+        drawTimeframes(g, viewStartUnit, viewUnits);
+        RenderSystem.clear(256, Minecraft.ON_OSX);
+        RenderSystem.disableDepthTest();
+
+        g.fill(railLeft, railY - 1, railRight, railY + 1, 0xFF3A3D4A);
 
         List<ChronicleEntry> entries = getFilteredEntries();
         int railWidth = Math.max(1, railRight - railLeft);
@@ -1289,6 +1313,143 @@ public class ChronicleScreen extends Screen {
         drawScrollbar(g);
     }
 
+    private void drawTimeframes(@NotNull GuiGraphics g, float viewStartUnit, float viewUnits) {
+        List<ChronicleTimeframe> frames = getTimeframesForTab();
+        if (frames.isEmpty() || timelineAreaW <= 0 || timelineAreaH <= 0) {
+            return;
+        }
+        float viewEnd = viewStartUnit + viewUnits;
+        List<ChronicleTimeframe> base = new ArrayList<>();
+        List<ChronicleTimeframe> entities = new ArrayList<>();
+        for (ChronicleTimeframe frame : frames) {
+            if (frame.layer() == TIMEFRAME_LAYER_ENTITY) {
+                entities.add(frame);
+            } else {
+                base.add(frame);
+            }
+        }
+        base.sort(Comparator.comparingInt(ChronicleTimeframe::priority));
+        entities.sort(Comparator.comparingInt(ChronicleTimeframe::priority));
+
+        int inset = 1;
+        int frameY = timelineAreaY + inset;
+        int frameH = Math.max(0, timelineAreaH - inset * 2);
+        if (frameH <= 0) {
+            return;
+        }
+
+        drawTimeframeLayer(g, base, viewStartUnit, viewEnd, frameY, frameH, true);
+        drawTimeframeLayer(g, entities, viewStartUnit, viewEnd, frameY, frameH, false);
+    }
+
+    private void drawTimeframeLayer(@NotNull GuiGraphics g, List<ChronicleTimeframe> frames, float viewStartUnit,
+                                    float viewEnd, int frameY, int frameH, boolean fadeEdges) {
+        for (ChronicleTimeframe frame : frames) {
+            float start = frame.startDay();
+            float end = frame.endDay();
+            if (end < viewStartUnit || start > viewEnd) {
+                continue;
+            }
+            float x0 = railLeft + (start - viewStartUnit) * unitSpacing;
+            float x1 = railLeft + (end - viewStartUnit) * unitSpacing;
+            int startX = (int) Math.floor(Math.max(x0, railLeft));
+            int endX = (int) Math.ceil(Math.min(x1, railRight));
+            if (endX <= startX) {
+                continue;
+            }
+            int width = endX - startX;
+            switch (frame.renderMode()) {
+                case TIMEFRAME_RENDER_ENTITY -> renderTimeframeEntityOverlay(g, frame, startX, frameY, width, frameH);
+                default -> renderTimeframeTexture(g, frame, startX, frameY, width, frameH);
+            }
+            if (fadeEdges && frame.renderMode() != TIMEFRAME_RENDER_ENTITY) {
+                drawTimeframeFade(g, startX, endX, frameY, frameY + frameH);
+            }
+        }
+    }
+
+    private void renderTimeframeTexture(@NotNull GuiGraphics g, ChronicleTimeframe frame, int x, int y, int w, int h) {
+        String textureId = frame.renderId();
+        if (textureId == null || textureId.isBlank()) {
+            return;
+        }
+        ResourceLocation texture = ResourceLocation.tryParse(textureId);
+        if (texture == null) {
+            return;
+        }
+        if (minecraft != null && minecraft.getResourceManager().getResource(texture).isEmpty()) {
+            return;
+        }
+        float alpha = frame.alpha() <= 0.0f ? 0.25f : frame.alpha();
+        RenderSystem.enableBlend();
+        RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, alpha);
+        for (int yy = y; yy < y + h; yy += TIMEFRAME_TILE_SIZE) {
+            int tileH = Math.min(TIMEFRAME_TILE_SIZE, y + h - yy);
+            for (int xx = x; xx < x + w; xx += TIMEFRAME_TILE_SIZE) {
+                int tileW = Math.min(TIMEFRAME_TILE_SIZE, x + w - xx);
+                g.blit(texture, xx, yy, 0, 0, tileW, tileH, TIMEFRAME_TILE_SIZE, TIMEFRAME_TILE_SIZE);
+            }
+        }
+        RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+        RenderSystem.disableBlend();
+    }
+
+    private void renderTimeframeEntityOverlay(@NotNull GuiGraphics g, ChronicleTimeframe frame, int x, int y, int w, int h) {
+        if (minecraft == null || minecraft.level == null) {
+            return;
+        }
+        net.minecraft.world.entity.LivingEntity entity = getOrCreateEntity(frame.renderId());
+        if (entity == null) {
+            return;
+        }
+        int centerX = x + w / 2;
+        int centerY = y + h / 2 + 4;
+        int maxBox = Math.max(12, Math.min(TIMEFRAME_ENTITY_BOX_SIZE, Math.min(w, h) - 4));
+        int size = Math.max(12, maxBox);
+        float scale = size;
+        float maxDim = Math.max(entity.getBbWidth(), entity.getBbHeight());
+        if (maxDim > 0.001f) {
+            float fit = size / maxDim;
+            if (fit < scale) {
+                scale = fit;
+            }
+        }
+        scale = scale / Math.max(0.01f, entity.getScale());
+        Vector3f translate = new Vector3f(0.0f, entity.getBbHeight() / 2.0f, 0.0f);
+        long now = Util.getMillis();
+        float angle = (float) ((now % 20000L) / 20000.0f) * ((float) Math.PI * 2.0f);
+        Quaternionf pose = new Quaternionf()
+                .rotateZ((float) Math.PI)
+                .rotateY(angle);
+        RenderSystem.enableDepthTest();
+        RenderSystem.depthMask(true);
+        InventoryScreen.renderEntityInInventory(g, centerX, centerY, scale, translate, pose, null, entity);
+        RenderSystem.clear(256, Minecraft.ON_OSX);
+        RenderSystem.disableDepthTest();
+    }
+
+    private void drawTimeframeFade(@NotNull GuiGraphics g, int x0, int x1, int y0, int y1) {
+        int fade = Math.min(TIMEFRAME_FADE_WIDTH, Math.max(1, (x1 - x0) / 3));
+        if (fade <= 0) {
+            return;
+        }
+        int steps = 6;
+        int baseColor = BG_COLOR & 0xFFFFFF;
+        RenderSystem.enableBlend();
+        for (int i = 0; i < steps; i++) {
+            float t = (float) i / (float) Math.max(1, steps - 1);
+            int alpha = (int) ((1.0f - t) * 255);
+            int color = (alpha << 24) | baseColor;
+            int leftStart = x0 + (i * fade / steps);
+            int leftEnd = x0 + ((i + 1) * fade / steps);
+            g.fill(leftStart, y0, leftEnd, y1, color);
+            int rightEnd = x1 - (i * fade / steps);
+            int rightStart = x1 - ((i + 1) * fade / steps);
+            g.fill(rightStart, y0, rightEnd, y1, color);
+        }
+        RenderSystem.disableBlend();
+    }
+
     private void drawTimelineBorder(@NotNull GuiGraphics g) {
         if (timelineAreaW <= 0 || timelineAreaH <= 0) {
             return;
@@ -1313,9 +1474,6 @@ public class ChronicleScreen extends Screen {
         int listX = panelX + PANEL_PADDING;
         int listY = panelY + 56;
         int listW = panelW - PANEL_PADDING * 2;
-        if (selectedHallUuid != null) {
-            listW = Math.max(120, listW - DETAIL_PANEL_WIDTH);
-        }
         int listBottom = panelY + panelH - 24;
         int listH = Math.max(1, listBottom - listY);
 
@@ -1342,12 +1500,10 @@ public class ChronicleScreen extends Screen {
 
     private void drawHallOfFameRows(@NotNull GuiGraphics g, int mouseX, int mouseY) {
         List<HallOfFameEntry> entries = ChroniclePayloads.ClientState.getHallOfFameEntries();
+        java.util.Map<String, Integer> otherCounts = buildOtherAdvancementCounts();
         int listX = panelX + PANEL_PADDING;
         int listY = panelY + 56;
         int listW = panelW - PANEL_PADDING * 2;
-        if (selectedHallUuid != null) {
-            listW = Math.max(120, listW - DETAIL_PANEL_WIDTH);
-        }
         int listBottom = panelY + panelH - 24;
 
         int rowH = 26;
@@ -1362,29 +1518,39 @@ public class ChronicleScreen extends Screen {
             int faceY = rowY + 4;
             drawPlayerFace(g, entry, faceX, faceY, 16);
 
-            int textX = faceX + 20;
-            g.drawString(font, entry.playerName(), textX, rowY + 8, 0xFFE0E2EC, false);
+        int textX = faceX + 20;
+        g.drawString(font, entry.playerName(), textX, rowY + 8, 0xFFE0E2EC, false);
 
-            String countText = Integer.toString(entry.worldFirstCount());
-            int countW = font.width(countText);
-            int countAreaRight = listX + listW - 60 - 10;
-            int iconSize = 16;
-            int gap = 4;
-            int totalW = iconSize + gap + countW;
-            int countX = countAreaRight - totalW + iconSize + gap;
-            int iconX = countX - gap - iconSize;
-            int iconY = rowY + 5;
-            g.renderItem(new ItemStack(RPGTimelineItems.CHRONICLE_WORLD_FIRST.get()), iconX, iconY);
-            g.drawString(font, countText, countX, rowY + 8, WORLD_FIRST_COLOR, false);
+        String countText = Integer.toString(entry.worldFirstCount());
+        int countW = font.width(countText);
+        int iconSize = 16;
+        int gap = 4;
+        int blockGap = 10;
+        int btnW = 50;
+        int btnH = 18;
+        int btnX = listX + listW - btnW - 8;
+        int btnY = rowY + 4;
 
-            int btnW = 50;
-            int btnH = 18;
-            int btnX = listX + listW - btnW - 8;
-            int btnY = rowY + 4;
-            boolean hover = inRect(mouseX, mouseY, btnX, btnY, btnW, btnH);
-            int btnColor = hover ? ACCENT_COLOR : CARD_BORDER;
-            g.fill(btnX, btnY, btnX + btnW, btnY + btnH, btnColor);
-            g.drawString(font, "View", btnX + 12, btnY + 5, 0xFFEDEDED, false);
+        String otherText = Integer.toString(otherCounts.getOrDefault(entry.playerUuid(), 0));
+        int otherW = font.width(otherText);
+        int otherBlockW = iconSize + gap + otherW;
+        int worldBlockW = iconSize + gap + countW;
+
+        int rightEdge = btnX - 8;
+        int otherBlockX = rightEdge - otherBlockW;
+        int worldBlockX = otherBlockX - blockGap - worldBlockW;
+        int iconY = rowY + 5;
+
+        g.renderItem(new ItemStack(RPGTimelineItems.CHRONICLE_WORLD_FIRST.get()), worldBlockX, iconY);
+        g.drawString(font, countText, worldBlockX + iconSize + gap, rowY + 8, WORLD_FIRST_COLOR, false);
+
+        g.renderItem(new ItemStack(RPGTimelineItems.CHRONICLE_ADVANCEMENT.get()), otherBlockX, iconY);
+        g.drawString(font, otherText, otherBlockX + iconSize + gap, rowY + 8, ACCENT_COLOR, false);
+
+        boolean hover = inRect(mouseX, mouseY, btnX, btnY, btnW, btnH);
+        int btnColor = hover ? ACCENT_COLOR : CARD_BORDER;
+        g.fill(btnX, btnY, btnX + btnW, btnY + btnH, btnColor);
+        g.drawString(font, "View", btnX + 12, btnY + 5, 0xFFEDEDED, false);
 
             hallRowBounds.add(new HallRowBounds(entry.playerUuid(), btnX, btnY, btnW, btnH));
         }
@@ -1392,6 +1558,7 @@ public class ChronicleScreen extends Screen {
 
     private void drawHallOfFameDetailPanel(@NotNull GuiGraphics g, String playerUuid, int mouseX, int mouseY) {
         List<ChronicleEntry> entries = ChroniclePayloads.ClientState.getHallOfFameDetails(playerUuid);
+        List<ChronicleEntry> otherEntries = getOtherAdvancementEntriesForPlayer(playerUuid);
         String playerName = findHallOfFameName(playerUuid);
 
         int panelWidth = DETAIL_PANEL_WIDTH;
@@ -1424,61 +1591,161 @@ public class ChronicleScreen extends Screen {
         int innerW = panelWidth - 24;
         int lineHeight = font.lineHeight;
         int iconSize = 16;
+        int faceSize = 16;
+        int faceGap = lineHeight;
         int rowGap = 8;
+        int groupGap = 10;
         int textX = innerX + iconSize + 8;
         int textWidth = innerW - iconSize - 8;
 
-        String header = playerName.isBlank() ? "World Firsts" : "World Firsts - " + playerName;
         int contentAreaY = headerY + lineHeight + 10;
-        int contentAreaH = panelHeight - 56;
-        int contentHeight = lineHeight + 12;
-        for (ChronicleEntry entry : entries) {
-            ChronicleDetail detail = new ChronicleDetail(entry.title(), entry.iconItemId(), entry.dayIndex(), entry.actorUuid(), entry.actorName());
-            contentHeight += measureDetailHeight(ChronicleEntryType.WORLD_FIRST, detail, textWidth, lineHeight, iconSize) + rowGap;
+        int contentAreaBottom = closeButtonY - 8;
+        int contentAreaH = Math.max(1, contentAreaBottom - contentAreaY);
+        int contentHeight = 0;
+        boolean hasWorldFirsts = !entries.isEmpty();
+        boolean hasOther = !otherEntries.isEmpty();
+        if (hasWorldFirsts) {
+            contentHeight += lineHeight + 6 + 1 + 6;
+            for (ChronicleEntry entry : entries) {
+                ChronicleDetail detail = new ChronicleDetail(entry.title(), entry.details(), entry.iconItemId(), entry.dayIndex(), entry.actorUuid(), entry.actorName());
+                contentHeight += measureDetailHeight(ChronicleEntryType.WORLD_FIRST, detail, textWidth, lineHeight, iconSize, faceSize) + rowGap;
+            }
+        }
+        if (hasOther) {
+            if (contentHeight > 0) {
+                contentHeight += groupGap;
+            }
+            contentHeight += lineHeight + 6 + 1 + 6;
+            for (ChronicleEntry entry : otherEntries) {
+                ChronicleDetail detail = new ChronicleDetail(entry.title(), entry.details(), entry.iconItemId(), entry.dayIndex(), entry.actorUuid(), entry.actorName());
+                contentHeight += measureDetailHeight(ChronicleEntryType.ADVANCEMENT, detail, textWidth, lineHeight, iconSize, faceSize) + rowGap;
+            }
         }
         detailScrollMax = Math.max(0, contentHeight - contentAreaH);
         detailScrollOffset = (int) clamp(detailScrollOffset, 0, detailScrollMax);
 
         int y = contentAreaY - detailScrollOffset;
-        g.fill(innerX, y, innerX + innerW, y + 1, CARD_BORDER);
-        y += 8;
+        g.enableScissor(panelX, contentAreaY, panelX + panelWidth, contentAreaY + contentAreaH);
+        java.util.Map<String, Integer> otherCounts = buildOtherAdvancementCounts();
+        String hoverFaceUuid = null;
+        String hoverFaceName = null;
 
-        if (entries.isEmpty()) {
-            g.drawString(font, "No world-firsts yet.", innerX, y, 0xFF9AA0AF, false);
+        if (!hasWorldFirsts && !hasOther) {
+            g.drawString(font, "No advancements recorded yet.", innerX, y, 0xFF9AA0AF, false);
+            g.disableScissor();
             drawDetailScrollbar(g, contentAreaY, contentAreaH);
             return;
         }
 
-        for (ChronicleEntry entry : entries) {
-            ChronicleDetail detail = new ChronicleDetail(entry.title(), entry.iconItemId(), entry.dayIndex(), entry.actorUuid(), entry.actorName());
-            int rowHeight = measureDetailHeight(ChronicleEntryType.WORLD_FIRST, detail, textWidth, lineHeight, iconSize);
-            if (y + rowHeight < contentAreaY) {
+        if (hasWorldFirsts) {
+            g.fill(innerX, y, innerX + innerW, y + 1, CARD_BORDER);
+            y += 8;
+
+            for (ChronicleEntry entry : entries) {
+                ChronicleDetail detail = new ChronicleDetail(entry.title(), entry.details(), entry.iconItemId(), entry.dayIndex(), entry.actorUuid(), entry.actorName());
+                int rowHeight = measureDetailHeight(ChronicleEntryType.WORLD_FIRST, detail, textWidth, lineHeight, iconSize, faceSize);
+                if (y + rowHeight < contentAreaY) {
+                    y += rowHeight + rowGap;
+                    continue;
+                }
+                if (y > contentAreaY + contentAreaH) {
+                    break;
+                }
+
+                ItemStack icon = iconForDetail(ChronicleEntryType.WORLD_FIRST, detail);
+                g.renderItem(icon, innerX, y);
+
+                int textY = y;
+                if (detail.actorUuid() != null && !detail.actorUuid().isBlank()) {
+                    drawPlayerFace(g, detail.actorUuid(), detail.actorName(), textX, y, faceSize);
+                    if (inRect(mouseX, mouseY, textX, y, faceSize, faceSize)) {
+                        hoverFaceUuid = detail.actorUuid();
+                        hoverFaceName = detail.actorName();
+                    }
+                    textY = y + faceSize + faceGap;
+                }
+
+                String title = detail.title();
+                if (title != null && title.startsWith("World First: ")) {
+                    title = title.substring("World First: ".length());
+                }
+                g.drawString(font, "World First: " + title, textX, textY, 0xFFE0E2EC, false);
+                textY += lineHeight;
+                String description = detail.description();
+                if (description != null && !description.isBlank()) {
+                    List<net.minecraft.util.FormattedCharSequence> lines = font.split(Component.literal(description), textWidth);
+                    for (net.minecraft.util.FormattedCharSequence line : lines) {
+                        if (textY + lineHeight >= contentAreaY && textY <= contentAreaY + contentAreaH) {
+                            g.drawString(font, line, textX, textY, 0xFFC8CBD6, false);
+                        }
+                        textY += lineHeight;
+                    }
+                }
+                g.drawString(font, RPGTimelineApi.buildDateString(detail.dayIndex()), textX, textY, 0xFF8F93A2, false);
+
                 y += rowHeight + rowGap;
-                continue;
             }
-            if (y > contentAreaY + contentAreaH) {
-                break;
-            }
-
-            ItemStack icon = iconForDetail(ChronicleEntryType.WORLD_FIRST, detail);
-            g.renderItem(icon, innerX, y);
-
-            int textY = y;
-            String title = detail.title();
-            if (title != null && title.startsWith("World First: ")) {
-                title = title.substring("World First: ".length());
-            }
-            g.drawString(font, "World First: " + title, textX, textY, 0xFFE0E2EC, false);
-            textY += lineHeight;
-            String author = detail.actorName() == null || detail.actorName().isBlank() ? "Unknown" : detail.actorName();
-            g.drawString(font, "Completed by: " + author, textX, textY, 0xFFB0B4C2, false);
-            textY += lineHeight;
-            g.drawString(font, RPGTimelineApi.buildDateString(detail.dayIndex()), textX, textY, 0xFF8F93A2, false);
-
-            y += rowHeight + rowGap;
         }
 
+        if (hasOther) {
+            if (hasWorldFirsts) {
+                y += groupGap;
+            }
+            String advHeader = playerName.isBlank() ? "Advancements" : "Advancements - " + playerName;
+            ItemStack advHeaderIcon = new ItemStack(RPGTimelineItems.CHRONICLE_ADVANCEMENT.get());
+            g.renderItem(advHeaderIcon, innerX, y - 1);
+            g.drawString(font, advHeader, innerX + 20, y, ACCENT_COLOR, false);
+            y += lineHeight + 10;
+            g.fill(innerX, y, innerX + innerW, y + 1, CARD_BORDER);
+            y += 6;
+
+            for (ChronicleEntry entry : otherEntries) {
+                ChronicleDetail detail = new ChronicleDetail(entry.title(), entry.details(), entry.iconItemId(), entry.dayIndex(), entry.actorUuid(), entry.actorName());
+                int rowHeight = measureDetailHeight(ChronicleEntryType.ADVANCEMENT, detail, textWidth, lineHeight, iconSize, faceSize);
+                if (y + rowHeight < contentAreaY) {
+                    y += rowHeight + rowGap;
+                    continue;
+                }
+                if (y > contentAreaY + contentAreaH) {
+                    break;
+                }
+
+                ItemStack icon = iconForDetail(ChronicleEntryType.ADVANCEMENT, detail);
+                g.renderItem(icon, innerX, y);
+
+                int textY = y;
+                if (detail.actorUuid() != null && !detail.actorUuid().isBlank()) {
+                    drawPlayerFace(g, detail.actorUuid(), detail.actorName(), textX, y, faceSize);
+                    if (inRect(mouseX, mouseY, textX, y, faceSize, faceSize)) {
+                        hoverFaceUuid = detail.actorUuid();
+                        hoverFaceName = detail.actorName();
+                    }
+                    textY = y + faceSize + faceGap;
+                }
+
+                g.drawString(font, "Advancement: " + detail.title(), textX, textY, 0xFFE0E2EC, false);
+                textY += lineHeight;
+                String description = detail.description();
+                if (description != null && !description.isBlank()) {
+                    List<net.minecraft.util.FormattedCharSequence> lines = font.split(Component.literal(description), textWidth);
+                    for (net.minecraft.util.FormattedCharSequence line : lines) {
+                        if (textY + lineHeight >= contentAreaY && textY <= contentAreaY + contentAreaH) {
+                            g.drawString(font, line, textX, textY, 0xFFC8CBD6, false);
+                        }
+                        textY += lineHeight;
+                    }
+                }
+                g.drawString(font, RPGTimelineApi.buildDateString(detail.dayIndex()), textX, textY, 0xFF8F93A2, false);
+
+                y += rowHeight + rowGap;
+            }
+        }
+
+        g.disableScissor();
         drawDetailScrollbar(g, contentAreaY, contentAreaH);
+        if (hoverFaceUuid != null) {
+            drawPlayerFaceTooltip(g, mouseX, mouseY, hoverFaceUuid, hoverFaceName, otherCounts);
+        }
     }
 
     private String findHallOfFameName(String playerUuid) {
@@ -1498,6 +1765,20 @@ public class ChronicleScreen extends Screen {
         try {
             java.util.UUID uuid = java.util.UUID.fromString(entry.playerUuid());
             GameProfile profile = new GameProfile(uuid, entry.playerName());
+            net.minecraft.client.resources.PlayerSkin skin = Minecraft.getInstance().getSkinManager().getInsecureSkin(profile);
+            PlayerFaceRenderer.draw(g, skin, x, y, size);
+        } catch (Throwable t) {
+            // fallback: no face
+        }
+    }
+
+    private void drawPlayerFace(@NotNull GuiGraphics g, String playerUuid, String playerName, int x, int y, int size) {
+        if (playerUuid == null || playerUuid.isBlank()) {
+            return;
+        }
+        try {
+            java.util.UUID uuid = java.util.UUID.fromString(playerUuid);
+            GameProfile profile = new GameProfile(uuid, playerName == null ? "" : playerName);
             net.minecraft.client.resources.PlayerSkin skin = Minecraft.getInstance().getSkinManager().getInsecureSkin(profile);
             PlayerFaceRenderer.draw(g, skin, x, y, size);
         } catch (Throwable t) {
@@ -1574,6 +1855,8 @@ public class ChronicleScreen extends Screen {
         int innerW = panelWidth - 24;
         int lineHeight = font.lineHeight;
         int iconSize = 16;
+        int faceSize = 16;
+        int faceGap = lineHeight;
         int rowGap = 8;
         int groupGap = 10;
         int textX = innerX + iconSize + 8;
@@ -1581,14 +1864,15 @@ public class ChronicleScreen extends Screen {
 
         List<ChronicleEntry> groups = buildSectionGroups(bucket);
         int contentAreaY = panelY + 12;
-        int contentAreaH = panelHeight - 56;
+        int contentAreaBottom = closeButtonY - 8;
+        int contentAreaH = Math.max(1, contentAreaBottom - contentAreaY);
 
         int contentHeight = 0;
         for (ChronicleEntry group : groups) {
             List<ChronicleDetail> drilldown = resolveDrilldown(group);
             int groupHeight = lineHeight + 6 + 1 + 6;
             for (ChronicleDetail detail : drilldown) {
-                groupHeight += measureDetailHeight(group.type(), detail, textWidth, lineHeight, iconSize) + rowGap;
+                groupHeight += measureDetailHeight(group.type(), detail, textWidth, lineHeight, iconSize, faceSize) + rowGap;
             }
             contentHeight += groupHeight + groupGap;
         }
@@ -1599,6 +1883,10 @@ public class ChronicleScreen extends Screen {
         detailScrollOffset = (int) clamp(detailScrollOffset, 0, detailScrollMax);
 
         int y = contentAreaY - detailScrollOffset;
+        g.enableScissor(panelX, contentAreaY, panelX + panelWidth, contentAreaY + contentAreaH);
+        java.util.Map<String, Integer> otherCounts = buildOtherAdvancementCounts();
+        String hoverFaceUuid = null;
+        String hoverFaceName = null;
         for (ChronicleEntry group : groups) {
             int headerColor = headerColorForType(group.type());
             List<ChronicleDetail> drilldown = resolveDrilldown(group);
@@ -1611,7 +1899,7 @@ public class ChronicleScreen extends Screen {
             y += 6;
 
             for (ChronicleDetail detail : drilldown) {
-                int rowHeight = measureDetailHeight(group.type(), detail, textWidth, lineHeight, iconSize);
+                int rowHeight = measureDetailHeight(group.type(), detail, textWidth, lineHeight, iconSize, faceSize);
                 if (y + rowHeight < contentAreaY) {
                     y += rowHeight + rowGap;
                     continue;
@@ -1624,11 +1912,20 @@ public class ChronicleScreen extends Screen {
                 g.renderItem(icon, innerX, y);
 
                 int textY = y;
+                boolean hasFace = detail.actorUuid() != null && !detail.actorUuid().isBlank();
+                if (hasFace) {
+                    drawPlayerFace(g, detail.actorUuid(), detail.actorName(), textX, y, faceSize);
+                    if (inRect(mouseX, mouseY, textX, y, faceSize, faceSize)) {
+                        hoverFaceUuid = detail.actorUuid();
+                        hoverFaceName = detail.actorName();
+                    }
+                    textY = y + faceSize + faceGap;
+                }
                 if (group.type() == ChronicleEntryType.ADMIN_NOTE) {
                     g.drawString(font, detail.title(), textX, textY, 0xFFE0E2EC, false);
                     textY += lineHeight;
 
-                    String noteDetails = detail.subtitle();
+                    String noteDetails = detail.description();
                     if (noteDetails != null && !noteDetails.isBlank()) {
                         List<net.minecraft.util.FormattedCharSequence> lines = font.split(Component.literal(noteDetails), textWidth);
                         for (net.minecraft.util.FormattedCharSequence line : lines) {
@@ -1651,9 +1948,16 @@ public class ChronicleScreen extends Screen {
                     }
                     g.drawString(font, label + title, textX, textY, 0xFFE0E2EC, false);
                     textY += lineHeight;
-                    String author = detail.actorName() == null || detail.actorName().isBlank() ? "Unknown" : detail.actorName();
-                    g.drawString(font, "Completed by: " + author, textX, textY, 0xFFB0B4C2, false);
-                    textY += lineHeight;
+                    String description = detail.description();
+                    if (description != null && !description.isBlank()) {
+                        List<net.minecraft.util.FormattedCharSequence> lines = font.split(Component.literal(description), textWidth);
+                        for (net.minecraft.util.FormattedCharSequence line : lines) {
+                            if (textY + lineHeight >= contentAreaY && textY <= contentAreaY + contentAreaH) {
+                                g.drawString(font, line, textX, textY, 0xFFC8CBD6, false);
+                            }
+                            textY += lineHeight;
+                        }
+                    }
                     g.drawString(font, RPGTimelineApi.buildDateString(detail.dayIndex()), textX, textY, 0xFF8F93A2, false);
                 }
 
@@ -1662,7 +1966,11 @@ public class ChronicleScreen extends Screen {
             y += groupGap;
         }
 
+        g.disableScissor();
         drawDetailScrollbar(g, contentAreaY, contentAreaH);
+        if (hoverFaceUuid != null) {
+            drawPlayerFaceTooltip(g, mouseX, mouseY, hoverFaceUuid, hoverFaceName, otherCounts);
+        }
     }
 
     private void drawAddPanel(@NotNull GuiGraphics g, int mouseX, int mouseY) {
@@ -1748,10 +2056,9 @@ public class ChronicleScreen extends Screen {
         if (drilldown != null && !drilldown.isEmpty()) {
             return drilldown;
         }
-        String subtitle = entry.type() == ChronicleEntryType.ADMIN_NOTE
-                ? (entry.details() == null ? "" : entry.details())
-                : (entry.iconItemId() == null ? "" : entry.iconItemId());
-        return List.of(new ChronicleDetail(entry.title(), subtitle, entry.dayIndex(), entry.actorUuid(), entry.actorName()));
+        String description = entry.details() == null ? "" : entry.details();
+        String iconId = entry.iconItemId() == null ? "" : entry.iconItemId();
+        return List.of(new ChronicleDetail(entry.title(), description, iconId, entry.dayIndex(), entry.actorUuid(), entry.actorName()));
     }
 
     private int headerColorForType(ChronicleEntryType type) {
@@ -1764,26 +2071,110 @@ public class ChronicleScreen extends Screen {
         return 0xFFEDEDED;
     }
 
-    private int measureDetailHeight(ChronicleEntryType type, ChronicleDetail detail, int textWidth, int lineHeight, int iconSize) {
+    private int measureDetailHeight(ChronicleEntryType type, ChronicleDetail detail, int textWidth, int lineHeight, int iconSize, int faceSize) {
         int textHeight;
         if (type == ChronicleEntryType.ADMIN_NOTE) {
             int lines = 3;
-            String details = detail.subtitle();
+            String details = detail.description();
             if (details != null && !details.isBlank()) {
                 lines += font.split(Component.literal(details), textWidth).size();
             }
             textHeight = lines * lineHeight;
         } else {
-            textHeight = lineHeight * 3;
+            int lines = 2;
+            String description = detail.description();
+            if (description != null && !description.isBlank()) {
+                lines += font.split(Component.literal(description), textWidth).size();
+            }
+            textHeight = lines * lineHeight;
         }
-        return Math.max(iconSize, textHeight);
+        boolean hasFace = detail.actorUuid() != null && !detail.actorUuid().isBlank();
+        int faceHeight = (hasFace && faceSize > 0) ? faceSize + lineHeight : 0;
+        int totalText = textHeight + faceHeight;
+        return Math.max(iconSize, totalText);
+    }
+
+    private java.util.Map<String, Integer> buildOtherAdvancementCounts() {
+        List<ChronicleEntry> entries = ChroniclePayloads.ClientState.getServerEntries();
+        if (entries == null || entries.isEmpty()) {
+            return java.util.Map.of();
+        }
+        java.util.Map<String, Integer> counts = new java.util.HashMap<>();
+        for (ChronicleEntry entry : entries) {
+            if (entry.type() != ChronicleEntryType.ADVANCEMENT) {
+                continue;
+            }
+            String uuid = entry.actorUuid();
+            if (uuid == null || uuid.isBlank()) {
+                continue;
+            }
+            counts.merge(uuid, 1, Integer::sum);
+        }
+        return counts;
+    }
+
+    private List<ChronicleEntry> getOtherAdvancementEntriesForPlayer(String playerUuid) {
+        if (playerUuid == null || playerUuid.isBlank()) {
+            return List.of();
+        }
+        List<ChronicleEntry> entries = ChroniclePayloads.ClientState.getServerEntries();
+        if (entries == null || entries.isEmpty()) {
+            return List.of();
+        }
+        List<ChronicleEntry> results = new ArrayList<>();
+        for (ChronicleEntry entry : entries) {
+            if (entry.type() != ChronicleEntryType.ADVANCEMENT) {
+                continue;
+            }
+            if (!playerUuid.equals(entry.actorUuid())) {
+                continue;
+            }
+            results.add(entry);
+        }
+        results.sort(Comparator.comparingLong(ChronicleEntry::dayIndex));
+        return results;
+    }
+
+    private int getWorldFirstCount(String playerUuid) {
+        if (playerUuid == null || playerUuid.isBlank()) {
+            return 0;
+        }
+        List<HallOfFameEntry> entries = ChroniclePayloads.ClientState.getHallOfFameEntries();
+        if (entries == null) {
+            return 0;
+        }
+        for (HallOfFameEntry entry : entries) {
+            if (playerUuid.equals(entry.playerUuid())) {
+                return entry.worldFirstCount();
+            }
+        }
+        return 0;
+    }
+
+    private void drawPlayerFaceTooltip(@NotNull GuiGraphics g, int mouseX, int mouseY, String playerUuid, String playerName,
+                                       java.util.Map<String, Integer> otherCounts) {
+        if (playerUuid == null || playerUuid.isBlank()) {
+            return;
+        }
+        String name = playerName == null || playerName.isBlank() ? findHallOfFameName(playerUuid) : playerName;
+        if (name == null || name.isBlank()) {
+            name = "Player";
+        }
+        int worldFirsts = getWorldFirstCount(playerUuid);
+        int others = otherCounts.getOrDefault(playerUuid, 0);
+        List<net.minecraft.util.FormattedCharSequence> tooltip = List.of(
+                Component.literal(name),
+                Component.literal("World-firsts: " + worldFirsts),
+                Component.literal("Advancements: " + others)
+        ).stream().map(Component::getVisualOrderText).toList();
+        g.renderTooltip(font, tooltip, mouseX, mouseY);
     }
 
     private ItemStack iconForDetail(ChronicleEntryType type, ChronicleDetail detail) {
         if (type == ChronicleEntryType.ADMIN_NOTE) {
             return new ItemStack(Items.BOOK);
         }
-        String id = detail.subtitle();
+        String id = detail.iconItemId();
         if (id != null && !id.isBlank()) {
             try {
                 ResourceLocation rl = ResourceLocation.parse(id);
@@ -1841,6 +2232,13 @@ public class ChronicleScreen extends Screen {
                 ? ChroniclePayloads.ClientState.getServerEntries()
                 : ChroniclePayloads.ClientState.getPersonalEntries();
         return entries == null ? List.of() : entries;
+    }
+
+    private List<ChronicleTimeframe> getTimeframesForTab() {
+        List<ChronicleTimeframe> frames = tab == ChronicleTab.SERVER
+                ? ChroniclePayloads.ClientState.getServerTimeframes()
+                : ChroniclePayloads.ClientState.getPersonalTimeframes();
+        return frames == null ? List.of() : frames;
     }
 
     private ChronicleEntry buildGroupedEntry(List<ChronicleEntry> entries, NodeCategory category, long anchorDay) {
@@ -1904,13 +2302,9 @@ public class ChronicleScreen extends Screen {
                 .sorted(Comparator.comparingLong(ChronicleEntry::dayIndex))
                 .limit(MAX_GROUP_DETAILS)
                 .forEach(entry -> {
-                    String subtitle = "";
-                    if (entry.type() == ChronicleEntryType.ADMIN_NOTE) {
-                        subtitle = entry.details() == null ? "" : entry.details();
-                    } else if (entry.iconItemId() != null) {
-                        subtitle = entry.iconItemId();
-                    }
-                    details.add(new ChronicleDetail(entry.title(), subtitle, entry.dayIndex(), entry.actorUuid(), entry.actorName()));
+                    String description = entry.details() == null ? "" : entry.details();
+                    String iconId = entry.iconItemId() == null ? "" : entry.iconItemId();
+                    details.add(new ChronicleDetail(entry.title(), description, iconId, entry.dayIndex(), entry.actorUuid(), entry.actorName()));
                 });
         return details;
     }
@@ -2163,6 +2557,45 @@ public class ChronicleScreen extends Screen {
         } catch (Throwable ignored) {
         }
         return new ItemStack(Items.PAPER);
+    }
+
+    private ItemStack itemStackFromRenderId(String renderId) {
+        if (renderId == null || renderId.isBlank()) {
+            return ItemStack.EMPTY;
+        }
+        try {
+            ResourceLocation rl = ResourceLocation.tryParse(renderId);
+            if (rl == null || !BuiltInRegistries.ITEM.containsKey(rl)) {
+                return ItemStack.EMPTY;
+            }
+            return new ItemStack(BuiltInRegistries.ITEM.get(rl));
+        } catch (Throwable ignored) {
+            return ItemStack.EMPTY;
+        }
+    }
+
+    private LivingEntity getOrCreateEntity(String entityId) {
+        if (entityId == null || entityId.isBlank() || minecraft == null || minecraft.level == null) {
+            return null;
+        }
+        LivingEntity cached = entityRenderCache.get(entityId);
+        if (cached != null && cached.level() == minecraft.level) {
+            return cached;
+        }
+        try {
+            ResourceLocation rl = ResourceLocation.tryParse(entityId);
+            if (rl == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(rl)) {
+                return null;
+            }
+            EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.get(rl);
+            Entity entity = type.create(minecraft.level);
+            if (entity instanceof LivingEntity living) {
+                entityRenderCache.put(entityId, living);
+                return living;
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
     }
 
     @Override

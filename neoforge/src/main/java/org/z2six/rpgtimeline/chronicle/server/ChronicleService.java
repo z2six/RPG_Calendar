@@ -240,7 +240,7 @@ public final class ChronicleService {
                     false,
                     List.of(),
                     title,
-                    first.actorName()
+                    first.details()
             ));
             worldFirstEventIds.add(first.id());
         }
@@ -309,7 +309,7 @@ public final class ChronicleService {
                     false,
                     List.of(),
                     title,
-                    first.actorName()
+                    first.details()
             ));
         }
 

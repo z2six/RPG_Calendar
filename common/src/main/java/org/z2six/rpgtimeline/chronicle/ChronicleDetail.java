@@ -5,7 +5,8 @@ package org.z2six.rpgtimeline.chronicle;
  */
 public record ChronicleDetail(
         String title,
-        String subtitle,
+        String description,
+        String iconItemId,
         long dayIndex,
         String actorUuid,
         String actorName

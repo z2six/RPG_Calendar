@@ -1,5 +1,6 @@
 package org.z2six.rpgtimeline.client;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -156,7 +157,7 @@ public final class ClientCalendarEvents {
             g.drawString(font, styled, x + 1, y + 1, shadowArgb, false);
             g.drawString(font, styled, x, y, argb, false);
 
-            drawOrnaments(g, x, y, textWidth, textHeight);
+            drawOrnaments(g, x, y, textWidth, textHeight, alpha);
 
         } catch (Throwable t) {
             LOG.error("[ClientCalendarEvents] onRenderGui failed", t);
@@ -233,7 +234,7 @@ public final class ClientCalendarEvents {
         }
     }
 
-    private static void drawOrnaments(@NotNull GuiGraphics g, int textX, int textY, int textWidth, int textHeight) {
+    private static void drawOrnaments(@NotNull GuiGraphics g, int textX, int textY, int textWidth, int textHeight, int alpha) {
         try {
             float scale = 0.5f;
             float invScale = 1.0f / scale;
@@ -241,6 +242,8 @@ public final class ClientCalendarEvents {
 
             g.pose().pushPose();
             g.pose().scale(scale, scale, 1.0f);
+            RenderSystem.enableBlend();
+            RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, alpha / 255.0f);
 
             int scaledCenterX = Math.round(centerX * invScale);
             int scaledTextY = Math.round(textY * invScale);
@@ -254,6 +257,8 @@ public final class ClientCalendarEvents {
             int bottomY = scaledTextY + scaledTextHeight + 6;
             g.blit(BOTTOM_ORNAMENT, bottomX, bottomY, 0, 0, BOTTOM_ORNAMENT_W, BOTTOM_ORNAMENT_H, BOTTOM_ORNAMENT_W, BOTTOM_ORNAMENT_H);
 
+            RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+            RenderSystem.disableBlend();
             g.pose().popPose();
         } catch (Throwable t) {
             LOG.error("[ClientCalendarEvents] drawOrnaments failed", t);
