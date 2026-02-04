@@ -69,6 +69,13 @@ public class RPGTimeline {
         }
 
         try {
+            org.z2six.rpgtimeline.chronicle.server.ChronicleDebugCommands.registerGameBus();
+            Constants.LOG.debug("[RPGTimeline] Registered ChronicleDebugCommands");
+        } catch (Throwable t) {
+            Constants.LOG.error("[RPGTimeline] ChronicleDebugCommands.registerGameBus() failed", t);
+        }
+
+        try {
             RPGTimelineServerSyncEvents.registerGameBus();
             Constants.LOG.debug("[RPGTimeline] Registered RPGTimelineServerSyncEvents");
         } catch (Throwable t) {
