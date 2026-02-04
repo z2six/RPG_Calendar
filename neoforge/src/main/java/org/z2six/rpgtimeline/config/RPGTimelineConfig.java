@@ -10,6 +10,7 @@ import org.z2six.rpgtimeline.calendar.CalendarDefinition;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * NeoForge-side SERVER config for RPG Calendar.
@@ -52,6 +53,8 @@ public final class RPGTimelineConfig {
      */
     public static final boolean DEFAULT_USE_CUSTOM_FONT = true;
 
+    public static final List<String> DEFAULT_MONTH_ABBREVIATIONS = List.of();
+
     public static final List<String> DEFAULT_CUSTOM_GOALS = List.of(
             "break_block|minecraft:stone|1&100&1000&10000",
             "break_block|minecraft:oak_log|1&100&1000&10000",
@@ -92,6 +95,7 @@ public final class RPGTimelineConfig {
 
     // calendar
     public static final ModConfigSpec.ConfigValue<List<? extends String>> MONTH_NAMES;
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> MONTH_ABBREVIATIONS;
     public static final ModConfigSpec.ConfigValue<String> YEAR_SUFFIX;
     public static final ModConfigSpec.IntValue DAYS_PER_MONTH;
     public static final ModConfigSpec.BooleanValue USE_CUSTOM_FONT;
@@ -116,6 +120,22 @@ public final class RPGTimelineConfig {
                         "monthNames",
                         Arrays.asList(DEFAULT_MONTH_NAMES),
                         o -> (o instanceof String s) && !s.isBlank()
+                );
+
+        MONTH_ABBREVIATIONS = builder
+                .comment(
+                        "Optional month abbreviations to use in compact timeline labels.",
+                        "Each entry must match an existing month name and provide its abbreviation.",
+                        "Format: MonthName=Abbrev",
+                        "Examples:",
+                        "Dawnroot=Daw",
+                        "Shadowmere=Shd",
+                        "If empty or invalid, the mod falls back to the first 3 letters."
+                )
+                .defineList(
+                        "monthAbbreviations",
+                        DEFAULT_MONTH_ABBREVIATIONS,
+                        o -> (o instanceof String s)
                 );
 
         YEAR_SUFFIX = builder
@@ -299,13 +319,16 @@ public final class RPGTimelineConfig {
     public static CalendarDefinition getCalendarDefinition() {
         try {
             List<String> monthNamesList = getMonthNamesList();
+            List<String> monthAbbreviationsList = getMonthAbbreviationsList();
             String suffix = getYearSuffix();
             int daysPerMonth = getDaysPerMonth();
 
             String[] namesArray = monthNamesList.toArray(new String[0]);
+            String[] abbrevArray = monthAbbreviationsList.toArray(new String[0]);
 
             CalendarDefinition def = new CalendarDefinition(
                     namesArray,
+                    abbrevArray,
                     suffix,
                     daysPerMonth,
                     (long) TICKS_PER_DAY
@@ -325,6 +348,7 @@ public final class RPGTimelineConfig {
 
             return new CalendarDefinition(
                     DEFAULT_MONTH_NAMES,
+                    CalendarDefinition.defaultDefinition().getMonthAbbreviations(),
                     DEFAULT_YEAR_SUFFIX,
                     DEFAULT_DAYS_PER_MONTH,
                     (long) TICKS_PER_DAY
@@ -361,6 +385,72 @@ public final class RPGTimelineConfig {
             LOG.error("[RPGTimelineConfig] getMonthNamesList failed; using defaults", t);
             return Arrays.asList(DEFAULT_MONTH_NAMES);
         }
+    }
+
+    public static List<String> getMonthAbbreviationsList() {
+        try {
+            List<String> monthNames = getMonthNamesList();
+            List<? extends String> raw = MONTH_ABBREVIATIONS.get();
+            java.util.Map<String, String> map = new java.util.HashMap<>();
+            if (raw != null) {
+                for (String entry : raw) {
+                    if (entry == null) {
+                        continue;
+                    }
+                    String trimmed = entry.trim();
+                    if (trimmed.isEmpty() || trimmed.startsWith("#")) {
+                        continue;
+                    }
+                    String[] parts = trimmed.split("=", 2);
+                    if (parts.length != 2) {
+                        LOG.warn("[RPGTimelineConfig] monthAbbreviations entry '{}' is invalid; expected Month=Abbrev", trimmed);
+                        continue;
+                    }
+                    String name = parts[0].trim();
+                    String abbr = parts[1].trim();
+                    if (name.isEmpty() || abbr.isEmpty()) {
+                        LOG.warn("[RPGTimelineConfig] monthAbbreviations entry '{}' is invalid; blank name/abbrev", trimmed);
+                        continue;
+                    }
+                    map.put(normalizeMonthKey(name), abbr);
+                }
+            }
+
+            List<String> resolved = new ArrayList<>(monthNames.size());
+            for (String monthName : monthNames) {
+                String key = normalizeMonthKey(monthName);
+                String abbr = map.get(key);
+                if (abbr == null || abbr.isBlank()) {
+                    resolved.add(fallbackAbbreviation(monthName));
+                } else {
+                    resolved.add(abbr);
+                }
+            }
+            return resolved;
+        } catch (Throwable t) {
+            LOG.error("[RPGTimelineConfig] getMonthAbbreviationsList failed; using fallbacks", t);
+            List<String> monthNames = getMonthNamesList();
+            List<String> resolved = new ArrayList<>(monthNames.size());
+            for (String name : monthNames) {
+                resolved.add(fallbackAbbreviation(name));
+            }
+            return resolved;
+        }
+    }
+
+    private static String normalizeMonthKey(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static String fallbackAbbreviation(String value) {
+        if (value == null || value.isBlank()) {
+            return "Mon";
+        }
+        String trimmed = value.trim();
+        return trimmed.length() <= 3 ? trimmed : trimmed.substring(0, 3);
     }
 
     public static List<String> getCustomGoalEntries() {

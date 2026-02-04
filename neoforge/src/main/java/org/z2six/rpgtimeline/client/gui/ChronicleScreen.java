@@ -919,10 +919,10 @@ public class ChronicleScreen extends Screen {
             return parts.year + " " + suffix;
         }
         if (scale == ChronicleScale.MONTH) {
-            String month = abbrevMonth(def.getMonthName(parts.monthIndex), false);
+            String month = def.getMonthAbbreviation(parts.monthIndex, false);
             return month + " " + parts.year + " " + suffix;
         }
-        String month = abbrevMonth(def.getMonthName(parts.monthIndex), true);
+        String month = def.getMonthAbbreviation(parts.monthIndex, true);
         return parts.dayOfMonth + " " + month + " " + parts.year + " " + suffix;
     }
 
@@ -3012,15 +3012,6 @@ public class ChronicleScreen extends Screen {
         return yearIndex * def.getDaysPerYear()
                 + (long) clampedMonth * daysPerMonth
                 + (long) clampedDay - 1L;
-    }
-
-    private String abbrevMonth(String month, boolean withDot) {
-        if (month == null || month.isBlank()) {
-            return withDot ? "Mon." : "Mon";
-        }
-        String trimmed = month.trim();
-        String abbr = trimmed.length() <= 3 ? trimmed : trimmed.substring(0, 3);
-        return withDot ? abbr + "." : abbr;
     }
 
     private boolean isNumericOrEmpty(String value) {

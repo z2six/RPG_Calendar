@@ -2,6 +2,7 @@ package org.z2six.rpgtimeline.calendar;
 
 import com.mojang.logging.LogUtils;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.z2six.rpgtimeline.Constants;
 
@@ -54,6 +55,7 @@ public final class CalendarDefinition {
     private static final long HARD_DEFAULT_TICKS_PER_DAY = 24000L;
 
     private final String[] monthNames;
+    private final String[] monthAbbreviations;
     private final String yearSuffix;
     private final int daysPerMonth;
     private final long ticksPerDay;
@@ -72,12 +74,33 @@ public final class CalendarDefinition {
             int daysPerMonth,
             long ticksPerDay
     ) {
+        this(monthNames, null, yearSuffix, daysPerMonth, ticksPerDay);
+    }
+
+    /**
+     * Constructor with optional month abbreviations.
+     *
+     * @param monthNames ordered list of month names; must have length >= 1
+     * @param monthAbbreviations optional abbreviations aligned to monthNames; can be null
+     * @param yearSuffix suffix string like "AN"
+     * @param daysPerMonth number of days in each month (>= 1)
+     * @param ticksPerDay number of Minecraft ticks per in-game day (>= 1)
+     */
+    public CalendarDefinition(
+            @NotNull String[] monthNames,
+            String @Nullable [] monthAbbreviations,
+            @NotNull String yearSuffix,
+            int daysPerMonth,
+            long ticksPerDay
+    ) {
         String[] validatedMonths = validateMonths(monthNames);
         String validatedSuffix = validateYearSuffix(yearSuffix);
         int validatedDaysPerMonth = validateDaysPerMonth(daysPerMonth);
         long validatedTicksPerDay = validateTicksPerDay(ticksPerDay);
+        String[] validatedAbbrevs = validateMonthAbbreviations(monthAbbreviations, validatedMonths);
 
         this.monthNames = validatedMonths;
+        this.monthAbbreviations = validatedAbbrevs;
         this.yearSuffix = validatedSuffix;
         this.daysPerMonth = validatedDaysPerMonth;
         this.ticksPerDay = validatedTicksPerDay;
@@ -103,6 +126,7 @@ public final class CalendarDefinition {
         try {
             return new CalendarDefinition(
                     HARD_DEFAULT_MONTHS.clone(),
+                    buildFallbackAbbreviations(HARD_DEFAULT_MONTHS),
                     HARD_DEFAULT_YEAR_SUFFIX,
                     HARD_DEFAULT_DAYS_PER_MONTH,
                     HARD_DEFAULT_TICKS_PER_DAY
@@ -112,6 +136,7 @@ public final class CalendarDefinition {
             // Last-resort fallback, should basically never happen.
             return new CalendarDefinition(
                     new String[]{"Month1"},
+                    buildFallbackAbbreviations(new String[]{"Month1"}),
                     "A.N.",
                     28,
                     24000L
@@ -168,6 +193,54 @@ public final class CalendarDefinition {
         }
     }
 
+    private static String @NotNull [] validateMonthAbbreviations(
+            String @Nullable [] input,
+            String @NotNull [] monthNames
+    ) {
+        try {
+            if (input == null || input.length == 0) {
+                return buildFallbackAbbreviations(monthNames);
+            }
+            if (input.length != monthNames.length) {
+                LOG.warn("[CalendarDefinition] monthAbbreviations length {} did not match monthNames length {}; using fallback",
+                        input.length, monthNames.length);
+                return buildFallbackAbbreviations(monthNames);
+            }
+            String[] copy = new String[input.length];
+            for (int i = 0; i < input.length; i++) {
+                String raw = input[i];
+                if (raw == null || raw.isBlank()) {
+                    copy[i] = buildFallbackAbbreviation(monthNames[i]);
+                } else {
+                    copy[i] = raw;
+                }
+            }
+            return copy;
+        } catch (Throwable t) {
+            LOG.error("[CalendarDefinition] validateMonthAbbreviations failed; using fallback abbreviations", t);
+            return buildFallbackAbbreviations(monthNames);
+        }
+    }
+
+    private static String @NotNull [] buildFallbackAbbreviations(String @NotNull [] monthNames) {
+        String[] result = new String[monthNames.length];
+        for (int i = 0; i < monthNames.length; i++) {
+            result[i] = buildFallbackAbbreviation(monthNames[i]);
+        }
+        return result;
+    }
+
+    private static @NotNull String buildFallbackAbbreviation(String monthName) {
+        if (monthName == null || monthName.isBlank()) {
+            return "Mon";
+        }
+        String trimmed = monthName.trim();
+        if (trimmed.length() <= 3) {
+            return trimmed;
+        }
+        return trimmed.substring(0, 3);
+    }
+
     private static int validateDaysPerMonth(int value) {
         try {
             if (value <= 0) {
@@ -207,6 +280,10 @@ public final class CalendarDefinition {
         return monthNames.clone();
     }
 
+    public @NotNull String[] getMonthAbbreviations() {
+        return monthAbbreviations.clone();
+    }
+
     public @NotNull String getMonthName(int index) {
         if (index < 0 || index >= monthNames.length) {
             LOG.warn("[CalendarDefinition] getMonthName: index {} out of range (0..{}); clamping", index, monthNames.length - 1);
@@ -214,6 +291,22 @@ public final class CalendarDefinition {
             return monthNames[clamped];
         }
         return monthNames[index];
+    }
+
+    public @NotNull String getMonthAbbreviation(int index, boolean withDot) {
+        int clamped = index;
+        if (clamped < 0 || clamped >= monthAbbreviations.length) {
+            LOG.warn("[CalendarDefinition] getMonthAbbreviation: index {} out of range (0..{}); clamping", index, monthAbbreviations.length - 1);
+            clamped = Math.max(0, Math.min(index, monthAbbreviations.length - 1));
+        }
+        String value = monthAbbreviations[clamped];
+        if (value == null || value.isBlank()) {
+            value = buildFallbackAbbreviation(getMonthName(clamped));
+        }
+        if (withDot && !value.endsWith(".")) {
+            return value + ".";
+        }
+        return value;
     }
 
     public @NotNull String getYearSuffix() {
@@ -257,6 +350,7 @@ public final class CalendarDefinition {
     public String toString() {
         return "CalendarDefinition{" +
                 "months=" + Arrays.toString(monthNames) +
+                ", monthAbbreviations=" + Arrays.toString(monthAbbreviations) +
                 ", yearSuffix='" + yearSuffix + '\'' +
                 ", daysPerMonth=" + daysPerMonth +
                 ", ticksPerDay=" + ticksPerDay +

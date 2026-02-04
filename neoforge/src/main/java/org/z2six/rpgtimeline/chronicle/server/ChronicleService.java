@@ -92,6 +92,60 @@ public final class ChronicleService {
         }
     }
 
+    public static void recordExternalAdvancement(
+            ServerPlayer player,
+            String sourceId,
+            Component title,
+            Component description,
+            String iconItemId
+    ) {
+        try {
+            if (player == null) {
+                return;
+            }
+
+            Component titleComponent = title == null ? Component.empty() : title;
+            Component detailsComponent = description == null ? Component.empty() : description;
+            var provider = player.serverLevel().registryAccess();
+            String titleJson = Component.Serializer.toJson(titleComponent, provider);
+            String detailsJson = Component.Serializer.toJson(detailsComponent, provider);
+            String actorName = player.getGameProfile().getName();
+            String actorUuid = player.getUUID().toString();
+            String resolvedSourceId = safe(sourceId);
+            String resolvedIcon = safe(iconItemId);
+            if (resolvedIcon.isBlank()) {
+                resolvedIcon = "minecraft:paper";
+            }
+            long dayIndex = RPGTimelineApi.getDayIndexForGameTime(player.serverLevel().getDayTime());
+
+            boolean worldFirst = !resolvedSourceId.isBlank() && isWorldFirst(player.getServer(), resolvedSourceId);
+
+            ChronicleEvent event = new ChronicleEvent(
+                    UUID.randomUUID().toString(),
+                    ChronicleEntryType.ADVANCEMENT,
+                    ChronicleScope.PERSONAL,
+                    dayIndex,
+                    titleJson,
+                    detailsJson,
+                    actorName,
+                    actorUuid,
+                    resolvedSourceId,
+                    resolvedIcon
+            );
+
+            ChronicleSavedData.get(player.getServer()).addEvent(event);
+            ChroniclePayloads.broadcastFullSync(player.getServer());
+
+            if (worldFirst) {
+                announceWorldFirst(player.getServer(), actorName, titleComponent);
+                ChroniclePayloads.broadcastHallOfFame(player.getServer());
+            }
+
+        } catch (Throwable t) {
+            LOG.error("[ChronicleService] recordExternalAdvancement failed safely", t);
+        }
+    }
+
     public static void recordCustomGoal(ServerPlayer player, ChronicleGoalDefinition goal) {
         try {
             if (player == null || goal == null) {

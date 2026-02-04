@@ -74,12 +74,13 @@ public final class RPGTimelineServerSyncEvents {
             }
 
             List<String> monthNames = RPGTimelineConfig.getMonthNamesList();
+            List<String> monthAbbreviations = RPGTimelineConfig.getMonthAbbreviationsList();
             String yearSuffix = RPGTimelineConfig.getYearSuffix();
             int daysPerMonth = RPGTimelineConfig.getDaysPerMonth();
             int ticksPerDay = RPGTimelineConfig.TICKS_PER_DAY;
             boolean useCustomFontNow = RPGTimelineConfig.getUseCustomFont();
 
-            int settingsHash = Objects.hash(monthNames, yearSuffix, daysPerMonth, ticksPerDay, useCustomFontNow);
+            int settingsHash = Objects.hash(monthNames, monthAbbreviations, yearSuffix, daysPerMonth, ticksPerDay, useCustomFontNow);
 
             boolean changed = false;
             if (!lastInitialized) {

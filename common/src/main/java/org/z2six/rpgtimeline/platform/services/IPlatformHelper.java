@@ -1,6 +1,10 @@
 package org.z2six.rpgtimeline.platform.services;
 
 import org.z2six.rpgtimeline.calendar.CalendarDefinition;
+import org.z2six.rpgtimeline.chronicle.ChronicleScope;
+import net.minecraft.advancements.AdvancementHolder;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
 
 public interface IPlatformHelper {
 
@@ -39,4 +43,25 @@ public interface IPlatformHelper {
      * Returns the active calendar definition for this runtime.
      */
     CalendarDefinition getCalendarDefinition();
+
+    /**
+     * Adds a chronicle note on the server.
+     */
+    void addChronicleNote(ServerPlayer player, ChronicleScope scope, String title, String details, long dayIndex);
+
+    /**
+     * Records a real advancement on the timeline (server side).
+     */
+    void recordAdvancement(ServerPlayer player, AdvancementHolder advancement);
+
+    /**
+     * Records an external/custom advancement-like entry on the timeline.
+     */
+    void recordExternalAdvancement(
+            ServerPlayer player,
+            String sourceId,
+            Component title,
+            Component description,
+            String iconItemId
+    );
 }

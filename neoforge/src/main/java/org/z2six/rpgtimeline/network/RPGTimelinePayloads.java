@@ -29,7 +29,7 @@ public final class RPGTimelinePayloads {
     /**
      * Bump if you change payload shapes. Must match client + server.
      */
-    private static final String PROTOCOL_VERSION = "1";
+    private static final String PROTOCOL_VERSION = "2";
 
     private RPGTimelinePayloads() {
         // no-op
@@ -94,6 +94,7 @@ public final class RPGTimelinePayloads {
 
         private static void applyFromServer(
                 List<String> monthNames,
+                List<String> monthAbbreviations,
                 String yearSuffix,
                 int daysPerMonth,
                 int ticksPerDay,
@@ -102,8 +103,10 @@ public final class RPGTimelinePayloads {
             useCustomFont = newUseCustomFont;
             try {
                 String[] namesArray = monthNames.toArray(new String[0]);
+                String[] abbrevArray = monthAbbreviations.toArray(new String[0]);
                 calendarDefinition = new org.z2six.rpgtimeline.calendar.CalendarDefinition(
                         namesArray,
+                        abbrevArray,
                         yearSuffix,
                         daysPerMonth,
                         (long) ticksPerDay
@@ -134,6 +137,7 @@ public final class RPGTimelinePayloads {
      */
     public record ServerCalendarSettingsPayload(
             List<String> monthNames,
+            List<String> monthAbbreviations,
             String yearSuffix,
             int daysPerMonth,
             int ticksPerDay,
@@ -149,6 +153,7 @@ public final class RPGTimelinePayloads {
         public static final StreamCodec<RegistryFriendlyByteBuf, ServerCalendarSettingsPayload> STREAM_CODEC =
                 StreamCodec.composite(
                         ByteBufCodecs.collection(ArrayList::new, ByteBufCodecs.STRING_UTF8), ServerCalendarSettingsPayload::monthNames,
+                        ByteBufCodecs.collection(ArrayList::new, ByteBufCodecs.STRING_UTF8), ServerCalendarSettingsPayload::monthAbbreviations,
                         ByteBufCodecs.STRING_UTF8, ServerCalendarSettingsPayload::yearSuffix,
                         ByteBufCodecs.INT, ServerCalendarSettingsPayload::daysPerMonth,
                         ByteBufCodecs.INT, ServerCalendarSettingsPayload::ticksPerDay,
@@ -175,12 +180,14 @@ public final class RPGTimelinePayloads {
 
             boolean useCustomFontValue = RPGTimelineConfig.getUseCustomFont();
             List<String> monthNames = new ArrayList<>(RPGTimelineConfig.getMonthNamesList());
+            List<String> monthAbbreviations = new ArrayList<>(RPGTimelineConfig.getMonthAbbreviationsList());
             String yearSuffix = RPGTimelineConfig.getYearSuffix();
             int daysPerMonth = RPGTimelineConfig.getDaysPerMonth();
             int ticksPerDay = RPGTimelineConfig.TICKS_PER_DAY;
 
             ServerCalendarSettingsPayload msg = new ServerCalendarSettingsPayload(
                     monthNames,
+                    monthAbbreviations,
                     yearSuffix,
                     daysPerMonth,
                     ticksPerDay,
@@ -227,6 +234,7 @@ public final class RPGTimelinePayloads {
                 try {
                     ClientState.applyFromServer(
                             payload.monthNames(),
+                            payload.monthAbbreviations(),
                             payload.yearSuffix(),
                             payload.daysPerMonth(),
                             payload.ticksPerDay(),

@@ -5,8 +5,13 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.fml.loading.FMLLoader;
+import net.minecraft.advancements.AdvancementHolder;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
 import org.slf4j.Logger;
 import org.z2six.rpgtimeline.calendar.CalendarDefinition;
+import org.z2six.rpgtimeline.chronicle.ChronicleScope;
+import org.z2six.rpgtimeline.chronicle.server.ChronicleService;
 import org.z2six.rpgtimeline.config.RPGTimelineConfig;
 import org.z2six.rpgtimeline.network.RPGTimelinePayloads;
 import org.z2six.rpgtimeline.platform.services.IPlatformHelper;
@@ -41,5 +46,33 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
             LOG.error("[NeoForgePlatformHelper] getCalendarDefinition() failed", t);
             return CalendarDefinition.defaultDefinition();
         }
+    }
+
+    @Override
+    public void addChronicleNote(ServerPlayer player, ChronicleScope scope, String title, String details, long dayIndex) {
+        if (player == null || scope == null) {
+            return;
+        }
+        if (dayIndex < 0L) {
+            ChronicleService.addAdminEvent(player, scope, title, details);
+        } else {
+            ChronicleService.addAdminEvent(player, scope, title, details, dayIndex);
+        }
+    }
+
+    @Override
+    public void recordAdvancement(ServerPlayer player, AdvancementHolder advancement) {
+        ChronicleService.recordAdvancement(player, advancement);
+    }
+
+    @Override
+    public void recordExternalAdvancement(
+            ServerPlayer player,
+            String sourceId,
+            Component title,
+            Component description,
+            String iconItemId
+    ) {
+        ChronicleService.recordExternalAdvancement(player, sourceId, title, description, iconItemId);
     }
 }
