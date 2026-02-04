@@ -160,6 +160,14 @@ public final class RPGTimelineConfig {
                         "- Perfect sync with Serene Seasons:",
                         "  1) Set Serene Seasons config sub_season_duration = 16",
                         "  2) Set daysPerMonth below to 24",
+                        "- Keep Serene Seasons defaults (sub_season_duration = 8):",
+                        "  * 8 months -> set daysPerMonth to 12 (96 days/year total)",
+                        "  * 12 months -> set daysPerMonth to 8",
+                        "  * 4 months -> set daysPerMonth to 24",
+                        "- More realistic RPG year (12 months at ~30 days):",
+                        "  1) Set Serene Seasons config sub_season_duration = 30",
+                        "  2) Set daysPerMonth below to 30",
+                        "  3) Ensure you have 12 monthNames above",
                         "",
                         "Valid range: 1..365"
                 )
