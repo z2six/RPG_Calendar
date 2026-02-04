@@ -52,6 +52,10 @@ final class ChronicleTimeframeRuleRegistry {
     }
 
     private static ChronicleTimeframeRule parseEntry(String entry, int order) {
+        String trimmed = entry == null ? "" : entry.trim();
+        if (trimmed.startsWith("#")) {
+            return null;
+        }
         Map<String, String> pairs = new HashMap<>();
         String[] tokens = entry.split(";");
         for (String token : tokens) {
@@ -184,30 +188,27 @@ final class ChronicleTimeframeRuleRegistry {
 
     private static ChronicleTimeframeRule.RenderMode parseRenderMode(String raw) {
         if (raw == null || raw.isBlank()) {
-            return ChronicleTimeframeRule.RenderMode.TILE;
+            return null;
         }
         String norm = raw.trim().toLowerCase(Locale.ROOT);
         return switch (norm) {
-            case "item", "icon" -> null;
             case "entity", "mob" -> ChronicleTimeframeRule.RenderMode.ENTITY;
-            default -> ChronicleTimeframeRule.RenderMode.TILE;
+            default -> null;
         };
     }
 
     private static ChronicleTimeframeRule.Layer parseLayer(String raw, ChronicleTimeframeRule.RenderMode renderMode) {
-        if (raw == null || raw.isBlank()) {
-            return defaultLayer(renderMode);
+        if (renderMode == ChronicleTimeframeRule.RenderMode.ENTITY) {
+            if (raw == null || raw.isBlank()) {
+                return ChronicleTimeframeRule.Layer.ENTITY;
+            }
+            String norm = raw.trim().toLowerCase(Locale.ROOT);
+            return switch (norm) {
+                case "entity", "mob" -> ChronicleTimeframeRule.Layer.ENTITY;
+                default -> null;
+            };
         }
-        String norm = raw.trim().toLowerCase(Locale.ROOT);
-        return switch (norm) {
-            case "item", "items" -> null;
-            case "entity", "mob" -> ChronicleTimeframeRule.Layer.ENTITY;
-            case "overlay", "top" -> renderMode == ChronicleTimeframeRule.RenderMode.ENTITY
-                    ? ChronicleTimeframeRule.Layer.ENTITY
-                    : ChronicleTimeframeRule.Layer.BASE;
-            case "texture", "tile", "base" -> ChronicleTimeframeRule.Layer.BASE;
-            default -> defaultLayer(renderMode);
-        };
+        return null;
     }
 
     private static ChronicleTimeframeRule.Layer defaultLayer(ChronicleTimeframeRule.RenderMode renderMode) {

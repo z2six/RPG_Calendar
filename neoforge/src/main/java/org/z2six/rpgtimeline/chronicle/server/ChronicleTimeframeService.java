@@ -1,6 +1,7 @@
 package org.z2six.rpgtimeline.chronicle.server;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.advancements.Advancement;
 import net.minecraft.advancements.AdvancementHolder;
 import net.minecraft.advancements.DisplayInfo;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -19,21 +20,28 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 public final class ChronicleTimeframeService {
 
     private static final Logger LOG = LogUtils.getLogger();
     private static final float DEFAULT_ALPHA = 0.25f;
-    private static final float VANILLA_BASE_DAYS = 3.0f;
-    private static final float VANILLA_ENTITY_DAYS = 3.0f;
-    private static final float VANILLA_BASE_ALPHA = 0.25f;
-    private static final float VANILLA_ENTITY_ALPHA = 0.45f;
-    private static final int VANILLA_BASE_PRIORITY = 60;
-    private static final int VANILLA_ENTITY_PRIORITY = 80;
-    private static final Map<ResourceLocation, VanillaOverride> VANILLA_OVERRIDES = buildVanillaOverrides();
+    private static final float BASE_DAYS = 3.0f;
+    private static final float BASE_ALPHA = 0.25f;
+    private static final int BASE_PRIORITY = 60;
+    private static final float ENTITY_DAYS = 3.0f;
+    private static final float ENTITY_ALPHA = 0.45f;
+    private static final int ENTITY_PRIORITY = 80;
+    private static final float NOTE_DAYS = 2.0f;
+    private static final float NOTE_ALPHA = 0.25f;
+    private static final int NOTE_PRIORITY = 70;
+    private static final String NOTE_TEXTURE = "minecraft:textures/block/bookshelf.png";
+    private static final String DEFAULT_ADVANCEMENT_BG = "minecraft:textures/gui/advancements/backgrounds/stone.png";
+    private static final String DEFAULT_CUSTOM_TEXTURE = "minecraft:textures/block/stone.png";
 
     private ChronicleTimeframeService() {
         // no-op
@@ -107,11 +115,15 @@ public final class ChronicleTimeframeService {
             long maxDay
     ) {
         List<ChronicleTimeframeRule> rules = ChronicleTimeframeRuleRegistry.getRules();
-        if (rules.isEmpty()) {
-            return List.of();
-        }
         if (events == null || events.isEmpty()) {
             return List.of();
+        }
+
+        List<ChronicleTimeframeRule> entityRules = new ArrayList<>();
+        for (ChronicleTimeframeRule rule : rules) {
+            if (rule.renderMode == ChronicleTimeframeRule.RenderMode.ENTITY) {
+                entityRules.add(rule);
+            }
         }
 
         List<ChronicleTimeframe> baseFrames = new ArrayList<>();
@@ -124,50 +136,59 @@ public final class ChronicleTimeframeService {
             boolean worldFirst = isWorldFirst(event, worldFirsts);
             MatchContext ctx = MatchContext.from(server, event);
 
-            VanillaOverride vanilla = resolveVanillaOverride(ctx);
-            if (vanilla != null && event.type() == ChronicleEntryType.ADVANCEMENT) {
-                ChronicleTimeframe frame = buildVanillaFrame(dayIndex, maxDay, vanilla);
-                if (frame != null) {
-                    if (vanilla.layer == 2) {
-                        entityFrames.add(frame);
-                    } else {
-                        baseFrames.add(frame);
-                    }
+            if (event.type() == ChronicleEntryType.ADMIN_NOTE) {
+                ChronicleTimeframe noteFrame = buildDirectFrame(dayIndex, maxDay, NOTE_PRIORITY, NOTE_DAYS, NOTE_ALPHA,
+                        0, 0, NOTE_TEXTURE);
+                if (noteFrame != null) {
+                    baseFrames.add(noteFrame);
                 }
                 continue;
             }
 
-            ChronicleTimeframeRule bestRule = null;
-            ResolvedRender bestRender = null;
-
-            for (ChronicleTimeframeRule rule : rules) {
-                if (!rule.matches(event, worldFirst, ctx)) {
-                    continue;
-                }
-                ResolvedRender resolved = resolveRender(rule, ctx);
-                if (resolved == null || resolved.renderId.isBlank()) {
-                    continue;
-                }
-                if (bestRule == null || compareRule(rule, bestRule) > 0) {
-                    bestRule = rule;
-                    bestRender = resolved;
-                }
+            if (event.type() != ChronicleEntryType.ADVANCEMENT || ctx == null) {
+                continue;
             }
 
-            if (bestRule != null && bestRender != null) {
-                ChronicleTimeframe frame = buildFrame(dayIndex, maxDay, bestRule, bestRender);
-                if (frame != null) {
-                    if (bestRender.layer == 2) {
-                        entityFrames.add(frame);
-                    } else {
-                        baseFrames.add(frame);
+            ChronicleTimeframe override = resolveEntityOverride(entityRules, event, worldFirst, ctx, dayIndex, maxDay);
+            if (override != null) {
+                entityFrames.add(override);
+                continue;
+            }
+
+            if (ctx.goalKey != null) {
+                if (ctx.goalKey.type() == ChronicleGoalType.KILL_MOB && ctx.goalKey.target() != null) {
+                    ChronicleTimeframe entityFrame = buildDirectFrame(dayIndex, maxDay, ENTITY_PRIORITY, ENTITY_DAYS, ENTITY_ALPHA,
+                            2, 2, ctx.goalKey.target().toString());
+                    if (entityFrame != null) {
+                        entityFrames.add(entityFrame);
+                        continue;
                     }
                 }
+                String texture = resolveTileTextureFromTarget(ctx.goalKey.target(), ChronicleTimeframeRule.TargetMode.AUTO);
+                if (texture == null || texture.isBlank()) {
+                    texture = DEFAULT_CUSTOM_TEXTURE;
+                }
+                ChronicleTimeframe baseFrame = buildDirectFrame(dayIndex, maxDay, BASE_PRIORITY, BASE_DAYS, BASE_ALPHA,
+                        0, 0, texture);
+                if (baseFrame != null) {
+                    baseFrames.add(baseFrame);
+                }
+                continue;
+            }
+
+            String texture = resolveAdvancementBackgroundTexture(server, ctx);
+            if (texture == null || texture.isBlank()) {
+                texture = DEFAULT_ADVANCEMENT_BG;
+            }
+            ChronicleTimeframe baseFrame = buildDirectFrame(dayIndex, maxDay, BASE_PRIORITY, BASE_DAYS, BASE_ALPHA,
+                    0, 0, texture);
+            if (baseFrame != null) {
+                baseFrames.add(baseFrame);
             }
         }
 
-        List<ChronicleTimeframe> baseNonOverlap = applyNonOverlap(baseFrames);
-        List<ChronicleTimeframe> entityNonOverlap = applyNonOverlap(entityFrames);
+        List<ChronicleTimeframe> baseNonOverlap = applyNonOverlap(baseFrames, true);
+        List<ChronicleTimeframe> entityNonOverlap = applyNonOverlap(entityFrames, false);
         List<ChronicleTimeframe> results = new ArrayList<>();
         results.addAll(mergeTimeframes(baseNonOverlap));
         results.addAll(mergeTimeframes(entityNonOverlap));
@@ -323,11 +344,12 @@ public final class ChronicleTimeframeService {
         );
     }
 
-    private static ChronicleTimeframe buildVanillaFrame(long dayIndex, long maxDay, VanillaOverride override) {
-        if (override == null) {
+    private static ChronicleTimeframe buildDirectFrame(long dayIndex, long maxDay, int priority, float days, float alpha,
+                                                       int layer, int renderMode, String renderId) {
+        if (renderId == null || renderId.isBlank()) {
             return null;
         }
-        float span = Math.max(0.25f, override.days);
+        float span = Math.max(0.25f, days);
         float half = span / 2.0f;
         float start = Math.max(0.0f, dayIndex - half);
         float end = Math.min((float) maxDay, (float) dayIndex + half);
@@ -336,78 +358,48 @@ public final class ChronicleTimeframeService {
             start = end;
             end = tmp;
         }
-        float alpha = override.alpha <= 0.0f ? DEFAULT_ALPHA : override.alpha;
+        float resolvedAlpha = alpha <= 0.0f ? DEFAULT_ALPHA : alpha;
         return new ChronicleTimeframe(
                 start,
                 end,
-                override.priority,
-                override.layer,
-                override.renderMode,
-                override.renderId,
-                alpha
+                priority,
+                layer,
+                renderMode,
+                renderId,
+                resolvedAlpha
         );
     }
 
-    private static VanillaOverride resolveVanillaOverride(MatchContext ctx) {
-        if (ctx == null || ctx.sourceId == null) {
+    private static ChronicleTimeframe resolveEntityOverride(List<ChronicleTimeframeRule> rules,
+                                                            ChronicleEvent event,
+                                                            boolean worldFirst,
+                                                            MatchContext ctx,
+                                                            long dayIndex,
+                                                            long maxDay) {
+        if (rules == null || rules.isEmpty()) {
             return null;
         }
-        if (!"minecraft".equals(ctx.sourceId.getNamespace())) {
-            return null;
-        }
-        VanillaOverride direct = VANILLA_OVERRIDES.get(ctx.sourceId);
-        if (direct != null) {
-            return direct;
-        }
-        String path = ctx.sourceId.getPath();
-        if (path.contains("kill_dragon")) {
-            return vanillaEntity("minecraft:ender_dragon");
-        }
-        if (path.contains("summon_wither")) {
-            return vanillaEntity("minecraft:wither");
-        }
-        if (path.contains("dragon_egg")) {
-            return vanillaBase("minecraft:textures/block/dragon_egg.png");
-        }
-        if (ctx.iconItemId != null) {
-            String texture = resolveTextureFromItem(ctx.iconItemId, ctx.iconIsBlock, ChronicleTimeframeRule.TargetMode.AUTO);
-            if (!texture.isBlank()) {
-                return vanillaBase(texture);
+        ChronicleTimeframeRule bestRule = null;
+        ResolvedRender bestRender = null;
+        for (ChronicleTimeframeRule rule : rules) {
+            if (!rule.matches(event, worldFirst, ctx)) {
+                continue;
+            }
+            ResolvedRender resolved = resolveRender(rule, ctx);
+            if (resolved == null || resolved.renderId.isBlank()) {
+                continue;
+            }
+            if (bestRule == null || compareRule(rule, bestRule) > 0) {
+                bestRule = rule;
+                bestRender = resolved;
             }
         }
-        return null;
+        if (bestRule == null || bestRender == null) {
+            return null;
+        }
+        return buildFrame(dayIndex, maxDay, bestRule, bestRender);
     }
 
-    private static VanillaOverride vanillaBase(String textureId) {
-        return new VanillaOverride(
-                VANILLA_BASE_PRIORITY,
-                VANILLA_BASE_DAYS,
-                VANILLA_BASE_ALPHA,
-                0,
-                0,
-                textureId == null ? "" : textureId
-        );
-    }
-
-    private static VanillaOverride vanillaEntity(String entityId) {
-        return new VanillaOverride(
-                VANILLA_ENTITY_PRIORITY,
-                VANILLA_ENTITY_DAYS,
-                VANILLA_ENTITY_ALPHA,
-                2,
-                2,
-                entityId == null ? "" : entityId
-        );
-    }
-
-    private static Map<ResourceLocation, VanillaOverride> buildVanillaOverrides() {
-        Map<ResourceLocation, VanillaOverride> map = new HashMap<>();
-        map.put(ResourceLocation.parse("minecraft:end/root"), vanillaBase("minecraft:textures/block/end_stone.png"));
-        map.put(ResourceLocation.parse("minecraft:end/kill_dragon"), vanillaEntity("minecraft:ender_dragon"));
-        map.put(ResourceLocation.parse("minecraft:end/dragon_egg"), vanillaBase("minecraft:textures/block/dragon_egg.png"));
-        map.put(ResourceLocation.parse("minecraft:nether/summon_wither"), vanillaEntity("minecraft:wither"));
-        return map;
-    }
 
     private static String resolveRenderIdFromTarget(ChronicleTimeframeRule rule, CustomGoalKey goalKey) {
         if (goalKey == null || rule == null) {
@@ -433,6 +425,35 @@ public final class ChronicleTimeframeService {
             case TILE -> resolveTextureFromItem(ctx.iconItemId, ctx.iconIsBlock, rule.targetMode);
             case ITEM -> "";
         };
+    }
+
+    private static String resolveAdvancementBackgroundTexture(MinecraftServer server, MatchContext ctx) {
+        if (server == null || ctx == null || ctx.sourceId == null) {
+            return "";
+        }
+        ResourceLocation current = ctx.sourceId;
+        Set<ResourceLocation> visited = new HashSet<>();
+        while (current != null && visited.add(current)) {
+            AdvancementHolder holder = server.getAdvancements().get(current);
+            if (holder == null) {
+                break;
+            }
+            Advancement advancement = holder.value();
+            if (advancement.display().isPresent()) {
+                DisplayInfo display = advancement.display().get();
+                if (display.getBackground().isPresent()) {
+                    return display.getBackground().get().toString();
+                }
+            }
+            current = advancement.parent().orElse(null);
+        }
+        if (ctx.iconItemId != null) {
+            String texture = resolveTextureFromItem(ctx.iconItemId, ctx.iconIsBlock, ChronicleTimeframeRule.TargetMode.AUTO);
+            if (!texture.isBlank()) {
+                return texture;
+            }
+        }
+        return "";
     }
 
     private static String resolveTileTextureFromTarget(ResourceLocation target, ChronicleTimeframeRule.TargetMode mode) {
@@ -610,7 +631,7 @@ public final class ChronicleTimeframeService {
         return merged;
     }
 
-    private static List<ChronicleTimeframe> applyNonOverlap(List<ChronicleTimeframe> frames) {
+    private static List<ChronicleTimeframe> applyNonOverlap(List<ChronicleTimeframe> frames, boolean allowSameRenderId) {
         if (frames == null || frames.isEmpty()) {
             return List.of();
         }
@@ -619,13 +640,20 @@ public final class ChronicleTimeframeService {
                 .comparingInt(ChronicleTimeframe::priority).reversed()
                 .thenComparingDouble(ChronicleTimeframe::startDay));
 
-        List<Range> occupied = new ArrayList<>();
+        List<OccupiedRange> occupied = new ArrayList<>();
         List<ChronicleTimeframe> result = new ArrayList<>();
         for (ChronicleTimeframe frame : sorted) {
             if (frame.endDay() <= frame.startDay()) {
                 continue;
             }
-            List<Range> available = subtractRanges(frame.startDay(), frame.endDay(), occupied);
+            List<Range> blockers = new ArrayList<>();
+            for (OccupiedRange range : occupied) {
+                if (allowSameRenderId && safe(frame.renderId()).equals(safe(range.renderId))) {
+                    continue;
+                }
+                blockers.add(new Range(range.start, range.end));
+            }
+            List<Range> available = subtractRanges(frame.startDay(), frame.endDay(), blockers);
             for (Range range : available) {
                 ChronicleTimeframe clipped = new ChronicleTimeframe(
                         range.start,
@@ -637,7 +665,7 @@ public final class ChronicleTimeframeService {
                         frame.alpha()
                 );
                 result.add(clipped);
-                insertRange(occupied, range);
+                insertOccupiedRange(occupied, new OccupiedRange(range.start, range.end, frame.renderId()));
             }
         }
         return result;
@@ -670,19 +698,25 @@ public final class ChronicleTimeframeService {
         return segments;
     }
 
-    private static void insertRange(List<Range> occupied, Range range) {
+    private static void insertOccupiedRange(List<OccupiedRange> occupied, OccupiedRange range) {
         float start = range.start;
         float end = range.end;
+        String renderId = safe(range.renderId);
         int index = 0;
         while (index < occupied.size() && occupied.get(index).end < start) {
             index++;
         }
         while (index < occupied.size() && occupied.get(index).start <= end) {
-            Range existing = occupied.remove(index);
+            OccupiedRange existing = occupied.get(index);
+            if (!safe(existing.renderId).equals(renderId)) {
+                index++;
+                continue;
+            }
+            occupied.remove(index);
             start = Math.min(start, existing.start);
             end = Math.max(end, existing.end);
         }
-        occupied.add(index, new Range(start, end));
+        occupied.add(index, new OccupiedRange(start, end, renderId));
     }
 
     private static boolean canMerge(ChronicleTimeframe a, ChronicleTimeframe b) {
@@ -921,24 +955,6 @@ public final class ChronicleTimeframeService {
         }
     }
 
-    private static final class VanillaOverride {
-        private final int priority;
-        private final float days;
-        private final float alpha;
-        private final int layer;
-        private final int renderMode;
-        private final String renderId;
-
-        private VanillaOverride(int priority, float days, float alpha, int layer, int renderMode, String renderId) {
-            this.priority = priority;
-            this.days = days;
-            this.alpha = alpha;
-            this.layer = layer;
-            this.renderMode = renderMode;
-            this.renderId = renderId == null ? "" : renderId;
-        }
-    }
-
     private static final class Range {
         private final float start;
         private final float end;
@@ -946,6 +962,18 @@ public final class ChronicleTimeframeService {
         private Range(float start, float end) {
             this.start = start;
             this.end = end;
+        }
+    }
+
+    private static final class OccupiedRange {
+        private final float start;
+        private final float end;
+        private final String renderId;
+
+        private OccupiedRange(float start, float end, String renderId) {
+            this.start = start;
+            this.end = end;
+            this.renderId = renderId == null ? "" : renderId;
         }
     }
 }
