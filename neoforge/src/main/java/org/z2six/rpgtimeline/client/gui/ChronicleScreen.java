@@ -11,9 +11,11 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.MultiLineEditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import com.mojang.math.Axis;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.Util;
+import net.minecraft.util.RandomSource;
 import net.minecraft.network.chat.Component;
 import net.minecraft.ChatFormatting;
 import net.minecraft.resources.ResourceLocation;
@@ -28,6 +30,7 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.z2six.rpgtimeline.Constants;
 import org.z2six.rpgtimeline.client.tooltip.ChronicleItemTooltipClient;
+import org.z2six.rpgtimeline.client.compat.SereneSeasonsCompat;
 import org.z2six.rpgtimeline.api.RPGTimelineApi;
 import org.z2six.rpgtimeline.calendar.CalendarDefinition;
 import org.z2six.rpgtimeline.chronicle.ChronicleDetail;
@@ -77,6 +80,29 @@ public class ChronicleScreen extends Screen {
     private static final int TIMEFRAME_RENDER_ENTITY = 2;
     private static final int TIMEFRAME_LAYER_BASE = 0;
     private static final int TIMEFRAME_LAYER_ENTITY = 2;
+    private static final int SEASON_PARTICLE_MIN = 6;
+    private static final int SEASON_PARTICLE_MAX = 32;
+    private static final int SEASON_PARTICLE_AREA = 14000;
+    private static final float SEASON_PARTICLE_ALPHA = 0.28f;
+    private static final int SPRING_COLOR = 0xFF7BD48A;
+    private static final int SUMMER_COLOR = 0xFFF5E091;
+    private static final int AUTUMN_COLOR = 0xFFE1A75C;
+    private static final int WINTER_COLOR = 0xFFBFE6FF;
+    private static final ResourceLocation[] SPRING_FLOWERS = new ResourceLocation[] {
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/season/flower_stage_1.png"),
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/season/flower_stage_2.png"),
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/season/flower_stage_3.png"),
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/season/flower_stage_4.png")
+    };
+    private static final ResourceLocation[] WINTER_ICE = new ResourceLocation[] {
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/season/ice.png"),
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/season/ice2.png"),
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/season/ice3.png")
+    };
+    private static final ResourceLocation FALL_LEAF =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/season/leaf.png");
+    private static final ResourceLocation FALL_ACORN =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/season/acorn.png");
 
     private static final int BG_COLOR = 0xFF121318;
     private static final int PANEL_COLOR = 0xFF1B1D24;
@@ -1177,7 +1203,6 @@ public class ChronicleScreen extends Screen {
         timelineAreaW = panelW - PANEL_PADDING * 2;
         timelineAreaH = Math.max(0, timelineBottom - timelineTop);
         g.fill(timelineAreaX, timelineAreaY, timelineAreaX + timelineAreaW, timelineAreaY + timelineAreaH, BG_COLOR);
-        drawTimelineBorder(g);
         g.enableScissor(timelineAreaX, timelineAreaY, timelineAreaX + timelineAreaW, timelineAreaY + timelineAreaH);
 
         List<ChronicleEntry> allEntries = getEntriesForTab();
@@ -1213,6 +1238,8 @@ public class ChronicleScreen extends Screen {
         scale = chooseScaleForView(viewUnits, def);
 
         drawTimeframes(g, viewStartUnit, viewUnits);
+        drawTimelineBorder(g);
+        drawSeasonOverlays(g, def, dayTime, viewStartUnit, viewUnits);
         RenderSystem.clear(256, Minecraft.ON_OSX);
         RenderSystem.disableDepthTest();
 
@@ -1340,6 +1367,397 @@ public class ChronicleScreen extends Screen {
 
         drawTimeframeLayer(g, base, viewStartUnit, viewEnd, frameY, frameH, true);
         drawTimeframeLayer(g, entities, viewStartUnit, viewEnd, frameY, frameH, false);
+    }
+
+    private void drawSeasonOverlays(@NotNull GuiGraphics g, CalendarDefinition def, long dayTime,
+                                    float viewStartUnit, float viewUnits) {
+        if (minecraft == null || minecraft.level == null) {
+            return;
+        }
+        SereneSeasonsCompat.SeasonSnapshot snapshot = SereneSeasonsCompat.getSeasonSnapshot(minecraft.level);
+        if (snapshot == null) {
+            return;
+        }
+        int seasonDuration = snapshot.seasonDuration();
+        int cycleDuration = snapshot.cycleDuration();
+        int cycleTicks = snapshot.cycleTicks();
+        if (seasonDuration <= 0 || cycleDuration <= 0) {
+            return;
+        }
+        long ticksPerDay = def.getTicksPerDay();
+        if (ticksPerDay <= 0L) {
+            ticksPerDay = 24000L;
+        }
+        double viewStartTick = viewStartUnit * (double) ticksPerDay;
+        double viewEndTick = (viewStartUnit + viewUnits) * (double) ticksPerDay;
+        long cycleStart = dayTime - cycleTicks;
+        long cycles = Math.floorDiv((long) Math.floor(viewStartTick) - cycleStart, cycleDuration);
+        cycleStart += cycles * cycleDuration;
+
+        int inset = 1;
+        int frameY = timelineAreaY + inset;
+        int frameH = Math.max(0, timelineAreaH - inset * 2);
+        if (frameH <= 0) {
+            return;
+        }
+
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        for (long cycleTick = cycleStart; cycleTick < viewEndTick; cycleTick += cycleDuration) {
+            for (int seasonIndex = 0; seasonIndex < 4; seasonIndex++) {
+                long seasonStartTick = cycleTick + (long) seasonIndex * seasonDuration;
+                long seasonEndTick = seasonStartTick + seasonDuration;
+                if (seasonEndTick < viewStartTick || seasonStartTick > viewEndTick) {
+                    continue;
+                }
+                float startDay = (float) (seasonStartTick / (double) ticksPerDay);
+                float endDay = (float) (seasonEndTick / (double) ticksPerDay);
+                renderSeasonSlice(g, seasonIndex, startDay, endDay, viewStartUnit, frameY, frameH,
+                        seasonStartTick, seasonDuration, ticksPerDay);
+            }
+        }
+        RenderSystem.disableBlend();
+    }
+
+    private void renderSeasonSlice(@NotNull GuiGraphics g, int seasonIndex, float startDay, float endDay,
+                                   float viewStartUnit, int frameY, int frameH,
+                                   long seasonStartTick, int seasonDuration, long ticksPerDay) {
+        float x0 = railLeft + (startDay - viewStartUnit) * unitSpacing;
+        float x1 = railLeft + (endDay - viewStartUnit) * unitSpacing;
+        int startX = (int) Math.floor(Math.max(x0, railLeft));
+        int endX = (int) Math.ceil(Math.min(x1, railRight));
+        if (endX <= startX) {
+            return;
+        }
+        drawSeasonParticles(g, seasonIndex, startX, endX, frameY, frameH, seasonStartTick, seasonDuration, ticksPerDay,
+                viewStartUnit);
+    }
+
+    private void drawSeasonParticles(@NotNull GuiGraphics g, int seasonIndex, int x0, int x1, int y, int h,
+                                     long seasonStartTick, int seasonDuration, long ticksPerDay, float viewStartUnit) {
+        int width = x1 - x0;
+        if (width <= 0 || h <= 0) {
+            return;
+        }
+        if (seasonIndex == 1) {
+            drawSummerBurst(g, x0, x1, y, h);
+            return;
+        }
+        float seasonDays = seasonDuration / (float) Math.max(1L, ticksPerDay);
+        int count = Math.max(SEASON_PARTICLE_MIN, Math.min(SEASON_PARTICLE_MAX, Math.round(seasonDays * 0.7f)));
+        long seedBase = (seasonStartTick * 31L) ^ ((long) seasonIndex << 48) ^ (long) seasonDuration;
+        float time = (float) (Util.getMillis() / 1000.0);
+
+        for (int i = 0; i < count; i++) {
+            RandomSource random = RandomSource.create(seedBase + (long) i * 1315423911L);
+            float posT = random.nextFloat();
+            float anchorDay = (float) (seasonStartTick / (double) ticksPerDay) + posT * seasonDays;
+            float baseX = railLeft + (anchorDay - viewStartUnit) * unitSpacing;
+            if (baseX < x0 - 24 || baseX > x1 + 24) {
+                continue;
+            }
+            float baseY = y + random.nextFloat() * h;
+            float phase = random.nextFloat() * ((float) Math.PI * 2.0f);
+            float speed = 0.12f + random.nextFloat() * 0.18f;
+            switch (seasonIndex) {
+                case 3 -> drawWinterParticle(g, random, x0, x1, y, h, time, baseX, baseY, phase, speed);
+                case 2 -> drawAutumnParticle(g, random, x0, x1, y, h, time, baseX, baseY, phase, speed);
+                case 0 -> drawSpringParticle(g, random, x0, x1, y, h, time, baseX, baseY, phase, speed);
+                default -> drawSummerParticle(g, x0, x1, y, h, time, baseX, baseY, phase, speed,
+                        getSeasonParticleColor(seasonIndex) & 0xFFFFFF);
+            }
+        }
+    }
+
+    private int getSeasonParticleColor(int seasonIndex) {
+        return switch (seasonIndex) {
+            case 3 -> WINTER_COLOR;
+            case 2 -> AUTUMN_COLOR;
+            case 0 -> SPRING_COLOR;
+            default -> SUMMER_COLOR;
+        };
+    }
+
+    private void drawWinterParticle(@NotNull GuiGraphics g, RandomSource random, int x0, int x1, int y, int h, float time,
+                                    float baseX, float baseY, float phase, float speed) {
+        int index = random.nextInt(WINTER_ICE.length);
+        ResourceLocation texture = WINTER_ICE[index];
+        float fallSpeed = 8.0f + speed * 4.0f;
+        float fall = (time * fallSpeed + phase * (h + 16.0f)) % (h + 16.0f);
+        float progress = fall / (h + 16.0f);
+        float px = baseX + (float) Math.sin(time * (0.4f + speed) + phase) * 2.0f;
+        float py = y + ((baseY - y) + fall) % (h + 16.0f) - 16.0f;
+        float alpha = SEASON_PARTICLE_ALPHA * (1.0f - progress);
+        drawSeasonSprite(g, x0, x1, y, h, texture, px, py, 16.0f, alpha);
+    }
+
+    private void drawAutumnParticle(@NotNull GuiGraphics g, RandomSource random, int x0, int x1, int y, int h, float time,
+                                    float baseX, float baseY, float phase, float speed) {
+        boolean leaf = random.nextFloat() < 0.6f;
+        ResourceLocation texture = leaf ? FALL_LEAF : FALL_ACORN;
+        float fallSpeed = 7.0f + speed * 3.0f;
+        float fall = (time * fallSpeed + phase * (h + 16.0f)) % (h + 16.0f);
+        float progress = fall / (h + 16.0f);
+        float sway = leaf ? (float) Math.sin(time * (1.2f + speed) + phase) * 4.0f : 0.0f;
+        float px = baseX + sway;
+        float py = y + ((baseY - y) + fall) % (h + 16.0f) - 16.0f;
+        float alpha = SEASON_PARTICLE_ALPHA * (1.0f - progress);
+        if (leaf) {
+            float rock = (float) Math.sin(time * (1.6f + speed) + phase) * 0.25f;
+            drawSeasonSpriteRotated(g, x0, x1, y, h, texture, px, py, 16.0f, alpha, rock);
+        } else {
+            drawSeasonSprite(g, x0, x1, y, h, texture, px, py, 16.0f, alpha);
+        }
+    }
+
+    private void drawSpringParticle(@NotNull GuiGraphics g, RandomSource random, int x0, int x1, int y, int h, float time,
+                                    float baseX, float baseY, float phase, float speed) {
+        float cycle = (time * (0.25f + speed * 0.15f) + phase) % 1.0f;
+        float grow = clamp(cycle / 0.7f, 0.0f, 1.0f);
+        float fadeOut = cycle > 0.9f ? (1.0f - (cycle - 0.9f) / 0.1f) : 1.0f;
+        float stageFloat = grow * (SPRING_FLOWERS.length - 1);
+        int stage = (int) Math.floor(stageFloat);
+        float stageT = stageFloat - stage;
+        int nextStage = Math.min(stage + 1, SPRING_FLOWERS.length - 1);
+        float size = 16.0f * grow;
+        float px = baseX + (float) Math.sin(time * 0.25f + phase) * 2.0f;
+        float py = baseY + (float) Math.cos(time * 0.22f + phase) * 2.0f;
+        float alpha = SEASON_PARTICLE_ALPHA * fadeOut;
+        if (size <= 1.5f || alpha <= 0.02f) {
+            return;
+        }
+        drawSeasonSprite(g, x0, x1, y, h, SPRING_FLOWERS[stage], px, py, size, alpha * (1.0f - stageT));
+        if (nextStage != stage) {
+            drawSeasonSprite(g, x0, x1, y, h, SPRING_FLOWERS[nextStage], px, py, size, alpha * stageT);
+        }
+    }
+
+    private void drawSummerParticle(@NotNull GuiGraphics g, int x0, int x1, int y, int h, float time,
+                                    float baseX, float baseY, float phase, float speed, int baseColor) {
+        float rotate = time * (0.15f + speed * 0.08f) + phase;
+        float slope = (float) Math.sin(rotate) * 0.25f;
+        float apexX = clamp(baseX, x0 + 4.0f, x1 - 4.0f);
+        float rayWidth = 10.0f + speed * 4.0f;
+        int rayColor = 0xFFF7E5A5;
+        drawSeasonRayStrip(g, x0, x1, y, h, apexX, slope, rayWidth, rayColor, SEASON_PARTICLE_ALPHA * 0.9f);
+    }
+
+    private void drawSeasonDot(@NotNull GuiGraphics g, int x0, int x1, int y, int h, float px, float py, float size,
+                               int baseColor, float alphaScale) {
+        if (size <= 0.1f) {
+            return;
+        }
+        float clampedX = clamp(px, x0 + 1.0f, x1 - 1.0f - size);
+        float clampedY = clamp(py, y + 1.0f, y + h - 1.0f - size);
+        float edge = Math.min(clampedX - x0, x1 - clampedX) / (float) Math.max(1, TIMEFRAME_FADE_WIDTH);
+        edge = clamp(edge, 0.0f, 1.0f);
+        int alpha = (int) (alphaScale * 255.0f * edge);
+        if (alpha <= 2) {
+            return;
+        }
+        int color = (alpha << 24) | (baseColor & 0xFFFFFF);
+        g.fill((int) clampedX, (int) clampedY, (int) (clampedX + size), (int) (clampedY + size), color);
+    }
+
+    private void drawSeasonSprite(@NotNull GuiGraphics g, int x0, int x1, int y, int h, ResourceLocation texture,
+                                  float centerX, float centerY, float size, float alpha) {
+        if (texture == null || size <= 0.5f || alpha <= 0.01f) {
+            return;
+        }
+        float edge = Math.min(centerX - x0, x1 - centerX) / (float) Math.max(1, TIMEFRAME_FADE_WIDTH);
+        edge = clamp(edge, 0.0f, 1.0f);
+        float finalAlpha = alpha * edge;
+        if (finalAlpha <= 0.01f) {
+            return;
+        }
+        float drawX = centerX - size * 0.5f;
+        float drawY = centerY - size * 0.5f;
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, finalAlpha);
+        g.pose().pushPose();
+        g.pose().translate(drawX, drawY, 0.0f);
+        float scale = size / 16.0f;
+        g.pose().scale(scale, scale, 1.0f);
+        g.blit(texture, 0, 0, 0, 0, 16, 16, 16, 16);
+        g.pose().popPose();
+        RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+    }
+
+    private void drawSeasonSpriteRotated(@NotNull GuiGraphics g, int x0, int x1, int y, int h, ResourceLocation texture,
+                                         float centerX, float centerY, float size, float alpha, float rotation) {
+        if (texture == null || size <= 0.5f || alpha <= 0.01f) {
+            return;
+        }
+        float edge = Math.min(centerX - x0, x1 - centerX) / (float) Math.max(1, TIMEFRAME_FADE_WIDTH);
+        edge = clamp(edge, 0.0f, 1.0f);
+        float finalAlpha = alpha * edge;
+        if (finalAlpha <= 0.01f) {
+            return;
+        }
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, finalAlpha);
+        g.pose().pushPose();
+        g.pose().translate(centerX, centerY, 0.0f);
+        g.pose().mulPose(Axis.ZP.rotation(rotation));
+        float scale = size / 16.0f;
+        g.pose().scale(scale, scale, 1.0f);
+        g.blit(texture, -8, -8, 0, 0, 16, 16, 16, 16);
+        g.pose().popPose();
+        RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+    }
+
+    private void drawSeasonRay(@NotNull GuiGraphics g, int x0, int x1, int y, int h, float px, float py,
+                               float length, float thickness, int baseColor, float alphaScale) {
+        float endX = clamp(px + length, x0 + 1.0f, x1 - 1.0f);
+        float startX = clamp(px - length * 0.25f, x0 + 1.0f, x1 - 1.0f);
+        float top = clamp(py - thickness, y + 1.0f, y + h - 2.0f);
+        float bottom = clamp(py + thickness, y + 1.0f, y + h - 1.0f);
+        float edge = Math.min(px - x0, x1 - px) / (float) Math.max(1, TIMEFRAME_FADE_WIDTH);
+        edge = clamp(edge, 0.0f, 1.0f);
+        int alpha = (int) (alphaScale * 255.0f * edge);
+        if (alpha <= 2) {
+            return;
+        }
+        int color = (alpha << 24) | (baseColor & 0xFFFFFF);
+        g.fill((int) startX, (int) top, (int) endX, (int) bottom, color);
+    }
+
+    private void drawSeasonRayCone(@NotNull GuiGraphics g, int x0, int x1, int y, int h, float apexX,
+                                   int rayHeight, float slope, float maxWidth, int baseColor, float alphaScale) {
+        int height = Math.min(rayHeight, h);
+        if (height <= 2) {
+            return;
+        }
+        float edgeBase = Math.min(apexX - x0, x1 - apexX) / (float) Math.max(1, TIMEFRAME_FADE_WIDTH);
+        edgeBase = clamp(edgeBase, 0.0f, 1.0f);
+        int alpha = (int) (alphaScale * 255.0f * edgeBase);
+        if (alpha <= 2) {
+            return;
+        }
+        int color = (alpha << 24) | (baseColor & 0xFFFFFF);
+        int step = 2;
+        for (int yy = 0; yy < height; yy += step) {
+            float t = (float) yy / (float) height;
+            float half = maxWidth * t;
+            float centerX = apexX + slope * yy;
+            float left = clamp(centerX - half, x0 + 1.0f, x1 - 1.0f);
+            float right = clamp(centerX + half, x0 + 1.0f, x1 - 1.0f);
+            int drawY0 = y + yy;
+            int drawY1 = Math.min(y + yy + step, y + h);
+            if (right > left && drawY1 > drawY0) {
+                g.fill((int) left, drawY0, (int) right, drawY1, color);
+            }
+        }
+    }
+
+    private void drawSummerBurst(@NotNull GuiGraphics g, int x0, int x1, int y, int h) {
+        int width = x1 - x0;
+        if (width <= 0) {
+            return;
+        }
+        float time = (float) (Util.getMillis() / 1000.0);
+        float sunX = (x0 + x1) * 0.5f;
+        float sunY = y - h * 0.45f;
+        int rays = 16;
+        float baseRotation = time * 0.18f;
+        int rayColor = 0xFFF7E5A5;
+        float startWidth = 10.0f;
+        float maxWidth = 28.0f;
+        List<SummerRay> visible = new ArrayList<>();
+        for (int i = 0; i < rays; i++) {
+            float angle = baseRotation + (float) (i * (Math.PI * 2.0f / rays));
+            float sin = (float) Math.sin(angle);
+            if (sin <= 0.05f) {
+                continue;
+            }
+            float cos = (float) Math.cos(angle);
+            float slope = cos / sin;
+            float xAtTop = sunX + (y - sunY) * slope;
+            float xAtBottom = sunX + (y + h - sunY) * slope;
+            float minX = Math.min(xAtTop, xAtBottom);
+            float maxX = Math.max(xAtTop, xAtBottom);
+            if (maxX < x0 - maxWidth || minX > x1 + maxWidth) {
+                continue;
+            }
+            visible.add(new SummerRay(slope, xAtBottom));
+        }
+        if (visible.isEmpty()) {
+            return;
+        }
+        visible.sort(Comparator.comparingDouble(ray -> ray.xBottom));
+        int count = visible.size();
+        for (int i = 0; i < count; i++) {
+            SummerRay ray = visible.get(i);
+            double leftGap = i == 0 ? Double.MAX_VALUE : ray.xBottom - visible.get(i - 1).xBottom;
+            double rightGap = i == count - 1 ? Double.MAX_VALUE : visible.get(i + 1).xBottom - ray.xBottom;
+            double minGap = Math.min(leftGap, rightGap);
+            float endWidth = (float) Math.min(maxWidth, minGap * 0.7f);
+            if (endWidth < startWidth) {
+                endWidth = startWidth;
+            }
+            drawSeasonRayConeFromSun(g, x0, x1, y, h, sunX, sunY, ray.slope, startWidth, endWidth,
+                    rayColor, 0.10f, 0.05f);
+        }
+    }
+
+    private void drawSeasonRayStrip(@NotNull GuiGraphics g, int x0, int x1, int y, int h, float apexX,
+                                    float slope, float rayWidth, int baseColor, float alphaScale) {
+        drawSeasonRayConeFromSun(g, x0, x1, y, h, apexX, y - h * 0.25f, slope, rayWidth, rayWidth,
+                baseColor, alphaScale, alphaScale * 0.4f);
+    }
+
+    private void drawSeasonRayConeFromSun(@NotNull GuiGraphics g, int x0, int x1, int y, int h, float sunX, float sunY,
+                                          float slope, float startWidth, float endWidth, int baseColor,
+                                          float alphaScale, float glowAlpha) {
+        float edgeBase = Math.min(sunX - x0, x1 - sunX) / (float) Math.max(1, TIMEFRAME_FADE_WIDTH);
+        edgeBase = clamp(edgeBase, 0.0f, 1.0f);
+        int alpha = (int) (alphaScale * 255.0f * edgeBase);
+        int glow = (int) (glowAlpha * 255.0f * edgeBase);
+        if (alpha <= 2 && glow <= 2) {
+            return;
+        }
+        int color = (alpha << 24) | (baseColor & 0xFFFFFF);
+        int glowColor = (glow << 24) | (baseColor & 0xFFFFFF);
+        int step = 3;
+        float height = Math.max(1.0f, h);
+        for (int yy = 0; yy < h; yy += step) {
+            float t = yy / height;
+            float fadeDown = 1.0f - t * 0.6f;
+            float width = startWidth + (endWidth - startWidth) * t;
+            float half = width * 0.5f;
+            float centerX = sunX + slope * (yy + (y - sunY));
+            float left = clamp(centerX - half, x0 + 1.0f, x1 - 1.0f);
+            float right = clamp(centerX + half, x0 + 1.0f, x1 - 1.0f);
+            int drawY0 = y + yy;
+            int drawY1 = Math.min(y + yy + step, y + h);
+            if (right > left && drawY1 > drawY0) {
+                int rowGlow = (int) (glow * fadeDown);
+                int rowAlpha = (int) (alpha * fadeDown);
+                if (rowGlow > 2) {
+                    float glowHalf = half + 3.0f;
+                    float glowLeft = clamp(centerX - glowHalf, x0 + 1.0f, x1 - 1.0f);
+                    float glowRight = clamp(centerX + glowHalf, x0 + 1.0f, x1 - 1.0f);
+                    int rowGlowColor = (rowGlow << 24) | (baseColor & 0xFFFFFF);
+                    g.fill((int) glowLeft, drawY0, (int) glowRight, drawY1, rowGlowColor);
+                }
+                if (rowAlpha > 2) {
+                    int rowColor = (rowAlpha << 24) | (baseColor & 0xFFFFFF);
+                    g.fill((int) left, drawY0, (int) right, drawY1, rowColor);
+                }
+            }
+        }
+    }
+
+    private static final class SummerRay {
+        private final float slope;
+        private final float xBottom;
+
+        private SummerRay(float slope, float xBottom) {
+            this.slope = slope;
+            this.xBottom = xBottom;
+        }
     }
 
     private void drawTimeframeLayer(@NotNull GuiGraphics g, List<ChronicleTimeframe> frames, float viewStartUnit,
@@ -1791,6 +2209,8 @@ public class ChronicleScreen extends Screen {
         Component title = Component.literal(entry.title());
         if (entry.type() == ChronicleEntryType.WORLD_FIRST) {
             title = title.copy().withStyle(ChatFormatting.GOLD);
+        } else if (entry.type() == ChronicleEntryType.ADVANCEMENT) {
+            title = title.copy().withStyle(ChatFormatting.BLUE);
         }
         stack.set(DataComponents.CUSTOM_NAME, title);
         List<Component> lines = getTooltipFromItem(minecraft, stack);
@@ -1844,6 +2264,7 @@ public class ChronicleScreen extends Screen {
         detailPanelH = panelHeight;
 
         g.fill(panelX, panelY, panelX + panelWidth, panelY + panelHeight, PANEL_COLOR);
+        drawDetailPanelBorder(g, panelX, panelY, panelHeight);
 
         closeButtonX = panelX + 12;
         closeButtonY = panelY + panelHeight - 30;
@@ -1994,7 +2415,14 @@ public class ChronicleScreen extends Screen {
         g.fill(x0, y0, x0 + 1, y1, CARD_BORDER);
         g.fill(x1 - 1, y0, x1, y1, CARD_BORDER);
         int midX = addPanelX + addPanelW / 2;
-        g.fill(midX - 10, y0, midX + 10, y0 + 2, CARD_BORDER);
+        g.fill(midX - 8, y0, midX + 8, y0 + 2, CARD_BORDER);
+
+        int cornerW = 6;
+        int cornerH = 3;
+        g.fill(x0 + 6, y0 + 3, x0 + 6 + cornerW, y0 + 3 + cornerH, CARD_BORDER);
+        g.fill(x1 - 6 - cornerW, y0 + 3, x1 - 6, y0 + 3 + cornerH, CARD_BORDER);
+        g.fill(x0 + 6, y1 - 6, x0 + 6 + cornerW, y1 - 3, CARD_BORDER);
+        g.fill(x1 - 6 - cornerW, y1 - 6, x1 - 6, y1 - 3, CARD_BORDER);
     }
 
     private void drawDetailPanelBorder(@NotNull GuiGraphics g, int x, int y, int h) {
@@ -2163,9 +2591,9 @@ public class ChronicleScreen extends Screen {
         int worldFirsts = getWorldFirstCount(playerUuid);
         int others = otherCounts.getOrDefault(playerUuid, 0);
         List<net.minecraft.util.FormattedCharSequence> tooltip = List.of(
-                Component.literal(name),
-                Component.literal("World-firsts: " + worldFirsts),
-                Component.literal("Advancements: " + others)
+                Component.literal(name).withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD),
+                Component.literal("World-firsts: " + worldFirsts).withStyle(ChatFormatting.GRAY),
+                Component.literal("Advancements: " + others).withStyle(ChatFormatting.GRAY)
         ).stream().map(Component::getVisualOrderText).toList();
         g.renderTooltip(font, tooltip, mouseX, mouseY);
     }

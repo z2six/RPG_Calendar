@@ -132,7 +132,9 @@ public final class RPGTimelineConfig {
                         "",
                         "Examples:",
                         "- Vanilla-ish fantasy default: 28",
-                        "- Perfect sync with Serene Seasons sub_season_duration=16: set this to 24",
+                        "- Perfect sync with Serene Seasons:",
+                        "  1) Set Serene Seasons config sub_season_duration = 16",
+                        "  2) Set daysPerMonth below to 24",
                         "",
                         "Valid range: 1..365"
                 )

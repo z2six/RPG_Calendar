@@ -1,0 +1,31 @@
+{
+  "frames": [
+    {
+      "texture": "tooltipoverhaul:textures/overlay/amber_frame.png",
+      "items": [
+        "rpgtimeline:chronicle_world_first"
+      ],
+      "borderType": "auto_gradient",
+      "gradientType": "legendary",
+      "specialEffect": "stars",
+      "iconBackgroundType": "slot_border"
+    },
+    {
+      "texture": "tooltipoverhaul:textures/overlay/diamond_frame.png",
+      "items": [
+        "rpgtimeline:chronicle_advancement"
+      ],
+      "borderType": "auto_gradient",
+      "gradientType": "rare",
+      "iconBackgroundType": "slot_border"
+    },
+    {
+      "items": [
+        "rpgtimeline:chronicle_note"
+      ],
+      "borderType": "auto_static",
+      "gradientType": "common",
+      "iconBackgroundType": "slot_border"
+    }
+  ]
+}
