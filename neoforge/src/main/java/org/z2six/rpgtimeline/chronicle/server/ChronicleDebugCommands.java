@@ -78,13 +78,13 @@ public final class ChronicleDebugCommands {
     private static int executeFake(CommandSourceStack source, int playerCount, int eventsPerPlayer, int daysRange) {
         MinecraftServer server = source.getServer();
         if (server == null) {
-            source.sendFailure(Component.literal("No server available."));
+            source.sendFailure(Component.translatable("command.rpgtimeline.debug.no_server"));
             return 0;
         }
 
         List<AdvancementHolder> advancements = collectDisplayAdvancements(server);
         if (advancements.isEmpty()) {
-            source.sendFailure(Component.literal("No visible advancements found."));
+            source.sendFailure(Component.translatable("command.rpgtimeline.debug.no_advancements"));
             return 0;
         }
 
@@ -128,7 +128,7 @@ public final class ChronicleDebugCommands {
         ChroniclePayloads.broadcastFullSync(server);
         ChroniclePayloads.broadcastHallOfFame(server);
         int injected = totalEvents;
-        source.sendSuccess(() -> Component.literal("Injected " + injected + " fake advancement events for " + playerCount + " fake players."), true);
+        source.sendSuccess(() -> Component.translatable("command.rpgtimeline.debug.injected", injected, playerCount), true);
         return injected;
     }
 

@@ -53,8 +53,11 @@ public final class ChronicleService {
                 return;
             }
 
-            String title = display.getTitle().getString();
-            String details = display.getDescription().getString();
+            Component titleComponent = display.getTitle();
+            Component detailsComponent = display.getDescription();
+            var provider = player.serverLevel().registryAccess();
+            String title = Component.Serializer.toJson(titleComponent, provider);
+            String details = Component.Serializer.toJson(detailsComponent, provider);
             String actorName = player.getGameProfile().getName();
             String actorUuid = player.getUUID().toString();
             String sourceId = advancement.id().toString();
@@ -80,7 +83,7 @@ public final class ChronicleService {
 
             ChroniclePayloads.broadcastFullSync(player.getServer());
             if (worldFirst) {
-                announceWorldFirst(player.getServer(), actorName, title);
+                announceWorldFirst(player.getServer(), actorName, titleComponent);
                 ChroniclePayloads.broadcastHallOfFame(player.getServer());
             }
 
@@ -121,7 +124,7 @@ public final class ChronicleService {
             ChroniclePayloads.broadcastFullSync(player.getServer());
 
             if (worldFirst) {
-                announceWorldFirst(player.getServer(), actorName, title);
+                announceWorldFirst(player.getServer(), actorName, Component.literal(title));
                 ChroniclePayloads.broadcastHallOfFame(player.getServer());
             }
         } catch (Throwable t) {
@@ -232,14 +235,13 @@ public final class ChronicleService {
 
         Set<String> worldFirstEventIds = new HashSet<>();
         for (ChronicleEvent first : firstByAdvancement.values()) {
-            String title = "World First: " + first.title();
             results.add(toEntry(
                     first,
                     ChronicleEntryType.WORLD_FIRST,
                     true,
                     false,
                     List.of(),
-                    title,
+                    first.title(),
                     first.details()
             ));
             worldFirstEventIds.add(first.id());
@@ -301,14 +303,13 @@ public final class ChronicleService {
             if (!playerUuid.equals(first.actorUuid())) {
                 continue;
             }
-            String title = "World First: " + first.title();
             results.add(toEntry(
                     first,
                     ChronicleEntryType.WORLD_FIRST,
                     true,
                     false,
                     List.of(),
-                    title,
+                    first.title(),
                     first.details()
             ));
         }
@@ -333,6 +334,7 @@ public final class ChronicleService {
                 event.dayIndex(),
                 safe(titleOverride),
                 safe(detailsOverride),
+                safe(event.sourceId()),
                 safe(event.actorName()),
                 safe(event.actorUuid()),
                 highlight,
@@ -395,14 +397,17 @@ public final class ChronicleService {
         return true;
     }
 
-    private static void announceWorldFirst(MinecraftServer server, String actorName, String title) {
+    private static void announceWorldFirst(MinecraftServer server, String actorName, Component title) {
         if (server == null) {
             return;
         }
-        String who = actorName == null || actorName.isBlank() ? "Someone" : actorName;
-        Component message = Component.literal("World First: ")
+        String who = actorName == null || actorName.isBlank()
+                ? Component.translatable("chat.rpgtimeline.someone").getString()
+                : actorName;
+        Component titleComponent = title == null ? Component.empty() : title;
+        Component message = Component.translatable("chat.rpgtimeline.world_first.prefix")
                 .withStyle(ChatFormatting.GOLD)
-                .append(Component.literal(who + " achieved " + title).withStyle(ChatFormatting.YELLOW));
+                .append(Component.translatable("chat.rpgtimeline.world_first.body", who, titleComponent).withStyle(ChatFormatting.YELLOW));
         server.getPlayerList().broadcastSystemMessage(message, false);
     }
 

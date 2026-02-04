@@ -1,6 +1,12 @@
+// common/build.gradle
 plugins {
     id 'multiloader-common'
     id 'net.neoforged.moddev'
+}
+
+repositories {
+    // Modrinth Maven for optional compat mods used at compile-time (not bundled)
+    maven { url = "https://api.modrinth.com/maven" }
 }
 
 neoForge {
@@ -21,6 +27,15 @@ dependencies {
     // fabric and neoforge both bundle mixinextras, so it is safe to use it in common
     compileOnly group: 'io.github.llamalad7', name: 'mixinextras-common', version: '0.3.5'
     annotationProcessor group: 'io.github.llamalad7', name: 'mixinextras-common', version: '0.3.5'
+
+    // Optional compat mods (compile-time only). Do NOT bundle into your jar.
+    compileOnly "maven.modrinth:serene-seasons:${serene_seasons_version}"
+    compileOnly "maven.modrinth:legendary-tooltips:${legendary_tooltips_version}"
+    compileOnly "maven.modrinth:tooltip-overhaul:${tooltip_overhaul_version}"
+
+    // Legendary Tooltips required libraries (compile-time only, harmless if not used directly)
+    compileOnly "maven.modrinth:iceberg:${iceberg_version}"
+    compileOnly "maven.modrinth:prism-lib:${prism_version}"
 }
 
 configurations {
@@ -38,4 +53,3 @@ artifacts {
     commonJava sourceSets.main.java.sourceDirectories.singleFile
     commonResources sourceSets.main.resources.sourceDirectories.singleFile
 }
-

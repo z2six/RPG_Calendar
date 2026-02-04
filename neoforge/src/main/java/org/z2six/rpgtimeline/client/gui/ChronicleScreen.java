@@ -3,6 +3,8 @@ package org.z2six.rpgtimeline.client.gui;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
+import net.minecraft.advancements.AdvancementHolder;
+import net.minecraft.advancements.DisplayInfo;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.PlayerFaceRenderer;
@@ -14,6 +16,7 @@ import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import com.mojang.math.Axis;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.Util;
 import net.minecraft.util.RandomSource;
 import net.minecraft.network.chat.Component;
@@ -239,7 +242,7 @@ public class ChronicleScreen extends Screen {
     private final java.util.Map<String, net.minecraft.world.entity.LivingEntity> entityRenderCache = new HashMap<>();
 
     public ChronicleScreen() {
-        super(Component.literal("Chronicle"));
+        super(Component.translatable("screen.rpgtimeline.chronicle"));
     }
 
     @Override
@@ -282,14 +285,14 @@ public class ChronicleScreen extends Screen {
 
         int fieldWidth = addPanelW - 32;
 
-        titleBox = new EditBox(font, addPanelX + 16, addPanelY + 40, fieldWidth, 18, Component.literal("Title"));
+        titleBox = new EditBox(font, addPanelX + 16, addPanelY + 40, fieldWidth, 18, Component.translatable("gui.rpgtimeline.label.title"));
         titleBox.setMaxLength(128);
-        titleBox.setHint(Component.literal("Title"));
+        titleBox.setHint(Component.translatable("gui.rpgtimeline.label.title"));
 
-        eventDayBox = new EditBox(font, addPanelX + 16, addPanelY + 66, 36, 18, Component.literal("Day"));
+        eventDayBox = new EditBox(font, addPanelX + 16, addPanelY + 66, 36, 18, Component.translatable("gui.rpgtimeline.label.day"));
         eventDayBox.setMaxLength(3);
         eventDayBox.setFilter(this::isNumericOrEmpty);
-        eventDayBox.setHint(Component.literal("Day"));
+        eventDayBox.setHint(Component.translatable("gui.rpgtimeline.label.day"));
 
         eventMonthX = eventDayBox.getX() + eventDayBox.getWidth() + 6;
         eventMonthY = addPanelY + 66;
@@ -297,10 +300,10 @@ public class ChronicleScreen extends Screen {
         eventMonthH = 18;
         refreshEventMonthList(def);
 
-        eventYearBox = new EditBox(font, eventMonthX + eventMonthW + 6, addPanelY + 66, 60, 18, Component.literal("Year"));
+        eventYearBox = new EditBox(font, eventMonthX + eventMonthW + 6, addPanelY + 66, 60, 18, Component.translatable("gui.rpgtimeline.label.year"));
         eventYearBox.setMaxLength(6);
         eventYearBox.setFilter(this::isNumericOrEmpty);
-        eventYearBox.setHint(Component.literal("Year"));
+        eventYearBox.setHint(Component.translatable("gui.rpgtimeline.label.year"));
 
         int detailsHeight = Math.max(80, addPanelH - 160);
         detailsBox = new MultiLineEditBox(
@@ -309,16 +312,16 @@ public class ChronicleScreen extends Screen {
                 addPanelY + 92,
                 fieldWidth,
                 detailsHeight,
-                Component.literal("Description"),
-                Component.literal("Description")
+                Component.translatable("gui.rpgtimeline.label.description"),
+                Component.translatable("gui.rpgtimeline.label.description")
         );
         detailsBox.setCharacterLimit(512);
 
-        submitButton = Button.builder(Component.literal("Submit"), btn -> submitAdminEvent())
+        submitButton = Button.builder(Component.translatable("gui.rpgtimeline.button.submit"), btn -> submitAdminEvent())
                 .bounds(addPanelX + 16, addPanelY + addPanelH - 56, fieldWidth, 20)
                 .build();
 
-        cancelButton = Button.builder(Component.literal("Cancel"), btn -> toggleAddPanel())
+        cancelButton = Button.builder(Component.translatable("gui.rpgtimeline.button.cancel"), btn -> toggleAddPanel())
                 .bounds(addPanelX + 16, addPanelY + addPanelH - 30, fieldWidth, 20)
                 .build();
 
@@ -348,7 +351,7 @@ public class ChronicleScreen extends Screen {
         y += 26;
 
         if (eventDayBox != null) {
-            eventDayBox.setX(fieldX + font.width("Date:") + 6);
+            eventDayBox.setX(fieldX + font.width(Component.translatable("gui.rpgtimeline.label.date")) + 6);
             eventDayBox.setY(y);
         }
 
@@ -393,7 +396,7 @@ public class ChronicleScreen extends Screen {
     }
 
     private void buildDetailPanelControls() {
-        closeDetailButton = Button.builder(Component.literal("Close"), btn -> closeDetailPanel())
+        closeDetailButton = Button.builder(Component.translatable("gui.rpgtimeline.button.close"), btn -> closeDetailPanel())
                 .bounds(0, 0, 0, 0)
                 .build();
         addRenderableWidget(closeDetailButton);
@@ -406,13 +409,13 @@ public class ChronicleScreen extends Screen {
         int y = panelY + 42;
         int h = 18;
         int gap = 6;
-        int labelWidth = font.width("Jump to:");
+        int labelWidth = font.width(Component.translatable("gui.rpgtimeline.label.jump_to"));
         int cursorX = x + labelWidth + gap;
 
         jumpLabelX = x;
         jumpLabelY = panelY + 46;
 
-        jumpDayBox = new EditBox(font, cursorX, y, 36, h, Component.literal("Day"));
+        jumpDayBox = new EditBox(font, cursorX, y, 36, h, Component.translatable("gui.rpgtimeline.label.day"));
         jumpDayBox.setMaxLength(3);
         jumpDayBox.setFilter(this::isNumericOrEmpty);
         jumpDayBox.setResponder(value -> tryJumpToDate());
@@ -426,7 +429,7 @@ public class ChronicleScreen extends Screen {
         refreshJumpMonthList(def);
 
         cursorX += jumpMonthW + gap;
-        jumpYearBox = new EditBox(font, cursorX, y, 60, h, Component.literal("Year"));
+        jumpYearBox = new EditBox(font, cursorX, y, 60, h, Component.translatable("gui.rpgtimeline.label.year"));
         jumpYearBox.setMaxLength(6);
         jumpYearBox.setFilter(this::isNumericOrEmpty);
         jumpYearBox.setResponder(value -> tryJumpToDate());
@@ -618,10 +621,10 @@ public class ChronicleScreen extends Screen {
 
         if (hoverInfoButton) {
             List<net.minecraft.util.FormattedCharSequence> tooltip = List.of(
-                    Component.literal("Scroll: pan the timeline"),
-                    Component.literal("CTRL + Scroll: zoom in/out"),
-                    Component.literal("Drag the bar: scrub time"),
-                    Component.literal("Click nodes: open details")
+                    Component.translatable("gui.rpgtimeline.help.scroll_pan"),
+                    Component.translatable("gui.rpgtimeline.help.ctrl_scroll_zoom"),
+                    Component.translatable("gui.rpgtimeline.help.drag_bar"),
+                    Component.translatable("gui.rpgtimeline.help.click_nodes")
             ).stream().map(Component::getVisualOrderText).toList();
             g.renderTooltip(font, tooltip, mouseX, mouseY);
         }
@@ -955,27 +958,27 @@ public class ChronicleScreen extends Screen {
     }
 
     private void drawHeader(@NotNull GuiGraphics g) {
-        Component title = Component.literal(buildChronicleTitle());
+        Component title = buildChronicleTitle();
         g.drawString(font, title, panelX + 18, panelY + 18, 0xFFEDEDED, false);
     }
 
-    private String buildChronicleTitle() {
+    private Component buildChronicleTitle() {
         Minecraft mc = Minecraft.getInstance();
         if (tab == ChronicleTab.HALL_OF_FAME) {
-            return "Hall of Fame";
+            return Component.translatable("gui.rpgtimeline.title.hall_of_fame");
         }
         if (tab == ChronicleTab.SERVER) {
             if (mc != null) {
                 if (mc.getSingleplayerServer() != null) {
                     String worldName = mc.getSingleplayerServer().getWorldData().getLevelName();
                     if (worldName != null && !worldName.isBlank()) {
-                        return "Chronicles of " + worldName;
+                        return Component.translatable("gui.rpgtimeline.title.of", worldName);
                     }
                 }
                 if (mc.getCurrentServer() != null && mc.getCurrentServer().name != null) {
                     String serverName = mc.getCurrentServer().name;
                     if (!serverName.isBlank()) {
-                        return "Chronicles of " + serverName;
+                        return Component.translatable("gui.rpgtimeline.title.of", serverName);
                     }
                 }
             }
@@ -983,11 +986,11 @@ public class ChronicleScreen extends Screen {
             if (mc != null && mc.player != null) {
                 String playerName = mc.player.getGameProfile().getName();
                 if (playerName != null && !playerName.isBlank()) {
-                    return "Chronicles of " + playerName;
+                    return Component.translatable("gui.rpgtimeline.title.of", playerName);
                 }
             }
         }
-        return "Chronicles";
+        return Component.translatable("gui.rpgtimeline.title");
     }
 
     private void drawTabs(@NotNull GuiGraphics g, int mouseX, int mouseY) {
@@ -996,12 +999,12 @@ public class ChronicleScreen extends Screen {
         int w = TAB_WIDTH;
         int h = TAB_HEIGHT;
 
-        drawTab(g, x, y, w, h, "Server", tab == ChronicleTab.SERVER);
-        drawTab(g, x + w + 8, y, w, h, "Personal", tab == ChronicleTab.PERSONAL);
-        drawTabWithIcon(g, x + (w + 8) * 2, y, w, h, "Hall of Fame", tab == ChronicleTab.HALL_OF_FAME);
+        drawTab(g, x, y, w, h, Component.translatable("gui.rpgtimeline.tab.server"), tab == ChronicleTab.SERVER);
+        drawTab(g, x + w + 8, y, w, h, Component.translatable("gui.rpgtimeline.tab.personal"), tab == ChronicleTab.PERSONAL);
+        drawTabWithIcon(g, x + (w + 8) * 2, y, w, h, Component.translatable("gui.rpgtimeline.tab.hall_of_fame"), tab == ChronicleTab.HALL_OF_FAME);
     }
 
-    private void drawTab(@NotNull GuiGraphics g, int x, int y, int w, int h, String label, boolean active) {
+    private void drawTab(@NotNull GuiGraphics g, int x, int y, int w, int h, Component label, boolean active) {
         int activeColor = 0xFF171A22;
         int color = active ? activeColor : TAB_INACTIVE_COLOR;
         g.fill(x, y, x + w, y + h, color);
@@ -1017,7 +1020,7 @@ public class ChronicleScreen extends Screen {
         g.drawString(font, label, textX, y + 6, 0xFFEDEDED, false);
     }
 
-    private void drawTabWithIcon(@NotNull GuiGraphics g, int x, int y, int w, int h, String label, boolean active) {
+    private void drawTabWithIcon(@NotNull GuiGraphics g, int x, int y, int w, int h, Component label, boolean active) {
         int activeColor = 0xFF171A22;
         int color = active ? activeColor : TAB_INACTIVE_COLOR;
         g.fill(x, y, x + w, y + h, color);
@@ -1052,7 +1055,7 @@ public class ChronicleScreen extends Screen {
     }
 
     private void drawJumpLabel(@NotNull GuiGraphics g) {
-        g.drawString(font, "Jump to:", jumpLabelX, jumpLabelY, 0xFFEDEDED, false);
+        g.drawString(font, Component.translatable("gui.rpgtimeline.label.jump_to"), jumpLabelX, jumpLabelY, 0xFFEDEDED, false);
         drawMonthDropdownControl(g);
     }
 
@@ -1912,7 +1915,7 @@ public class ChronicleScreen extends Screen {
         }
 
         if (entries.isEmpty()) {
-            g.drawString(font, "No world-firsts recorded yet.", listX, listY + 4, 0xFF9AA0AF, false);
+            g.drawString(font, Component.translatable("gui.rpgtimeline.hof.none_world_firsts"), listX, listY + 4, 0xFF9AA0AF, false);
         }
     }
 
@@ -1968,7 +1971,7 @@ public class ChronicleScreen extends Screen {
         boolean hover = inRect(mouseX, mouseY, btnX, btnY, btnW, btnH);
         int btnColor = hover ? ACCENT_COLOR : CARD_BORDER;
         g.fill(btnX, btnY, btnX + btnW, btnY + btnH, btnColor);
-        g.drawString(font, "View", btnX + 12, btnY + 5, 0xFFEDEDED, false);
+        g.drawString(font, Component.translatable("gui.rpgtimeline.button.view"), btnX + 12, btnY + 5, 0xFFEDEDED, false);
 
             hallRowBounds.add(new HallRowBounds(entry.playerUuid(), btnX, btnY, btnW, btnH));
         }
@@ -2003,7 +2006,7 @@ public class ChronicleScreen extends Screen {
         int headerY = panelY + 12;
         ItemStack headerIcon = new ItemStack(RPGTimelineItems.CHRONICLE_WORLD_FIRST.get());
         g.renderItem(headerIcon, headerX, headerY);
-        g.drawString(font, "World Firsts - " + playerName, headerX + 20, headerY + 4, WORLD_FIRST_COLOR, false);
+        g.drawString(font, Component.translatable("gui.rpgtimeline.hof.world_firsts", playerName), headerX + 20, headerY + 4, WORLD_FIRST_COLOR, false);
 
         int innerX = panelX + 12;
         int innerW = panelWidth - 24;
@@ -2025,7 +2028,7 @@ public class ChronicleScreen extends Screen {
         if (hasWorldFirsts) {
             contentHeight += lineHeight + 6 + 1 + 6;
             for (ChronicleEntry entry : entries) {
-                ChronicleDetail detail = new ChronicleDetail(entry.title(), entry.details(), entry.iconItemId(), entry.dayIndex(), entry.actorUuid(), entry.actorName());
+                ChronicleDetail detail = new ChronicleDetail(entry.title(), entry.details(), entry.iconItemId(), entry.sourceId(), entry.dayIndex(), entry.actorUuid(), entry.actorName());
                 contentHeight += measureDetailHeight(ChronicleEntryType.WORLD_FIRST, detail, textWidth, lineHeight, iconSize, faceSize) + rowGap;
             }
         }
@@ -2035,7 +2038,7 @@ public class ChronicleScreen extends Screen {
             }
             contentHeight += lineHeight + 6 + 1 + 6;
             for (ChronicleEntry entry : otherEntries) {
-                ChronicleDetail detail = new ChronicleDetail(entry.title(), entry.details(), entry.iconItemId(), entry.dayIndex(), entry.actorUuid(), entry.actorName());
+                ChronicleDetail detail = new ChronicleDetail(entry.title(), entry.details(), entry.iconItemId(), entry.sourceId(), entry.dayIndex(), entry.actorUuid(), entry.actorName());
                 contentHeight += measureDetailHeight(ChronicleEntryType.ADVANCEMENT, detail, textWidth, lineHeight, iconSize, faceSize) + rowGap;
             }
         }
@@ -2049,7 +2052,7 @@ public class ChronicleScreen extends Screen {
         String hoverFaceName = null;
 
         if (!hasWorldFirsts && !hasOther) {
-            g.drawString(font, "No advancements recorded yet.", innerX, y, 0xFF9AA0AF, false);
+            g.drawString(font, Component.translatable("gui.rpgtimeline.hof.none_advancements"), innerX, y, 0xFF9AA0AF, false);
             g.disableScissor();
             drawDetailScrollbar(g, contentAreaY, contentAreaH);
             return;
@@ -2060,7 +2063,7 @@ public class ChronicleScreen extends Screen {
             y += 8;
 
             for (ChronicleEntry entry : entries) {
-                ChronicleDetail detail = new ChronicleDetail(entry.title(), entry.details(), entry.iconItemId(), entry.dayIndex(), entry.actorUuid(), entry.actorName());
+                ChronicleDetail detail = new ChronicleDetail(entry.title(), entry.details(), entry.iconItemId(), entry.sourceId(), entry.dayIndex(), entry.actorUuid(), entry.actorName());
                 int rowHeight = measureDetailHeight(ChronicleEntryType.WORLD_FIRST, detail, textWidth, lineHeight, iconSize, faceSize);
                 if (y + rowHeight < contentAreaY) {
                     y += rowHeight + rowGap;
@@ -2083,15 +2086,12 @@ public class ChronicleScreen extends Screen {
                     textY = y + faceSize + faceGap;
                 }
 
-                String title = detail.title();
-                if (title != null && title.startsWith("World First: ")) {
-                    title = title.substring("World First: ".length());
-                }
-                g.drawString(font, "World First: " + title, textX, textY, 0xFFE0E2EC, false);
+                Component title = titleComponentForEntry(ChronicleEntryType.WORLD_FIRST, detail.title(), detail.sourceId());
+                g.drawString(font, Component.translatable("gui.rpgtimeline.label.world_first", title), textX, textY, 0xFFE0E2EC, false);
                 textY += lineHeight;
-                String description = detail.description();
-                if (description != null && !description.isBlank()) {
-                    List<net.minecraft.util.FormattedCharSequence> lines = font.split(Component.literal(description), textWidth);
+                Component description = descriptionComponentForEntry(ChronicleEntryType.WORLD_FIRST, detail.description(), detail.sourceId());
+                if (description != null && !description.getString().isBlank()) {
+                    List<net.minecraft.util.FormattedCharSequence> lines = font.split(description, textWidth);
                     for (net.minecraft.util.FormattedCharSequence line : lines) {
                         if (textY + lineHeight >= contentAreaY && textY <= contentAreaY + contentAreaH) {
                             g.drawString(font, line, textX, textY, 0xFFC8CBD6, false);
@@ -2109,7 +2109,9 @@ public class ChronicleScreen extends Screen {
             if (hasWorldFirsts) {
                 y += groupGap;
             }
-            String advHeader = playerName.isBlank() ? "Advancements" : "Advancements - " + playerName;
+            String advHeader = playerName.isBlank()
+                    ? Component.translatable("gui.rpgtimeline.hof.advancements").getString()
+                    : Component.translatable("gui.rpgtimeline.hof.advancements_named", playerName).getString();
             ItemStack advHeaderIcon = new ItemStack(RPGTimelineItems.CHRONICLE_ADVANCEMENT.get());
             g.renderItem(advHeaderIcon, innerX, y - 1);
             g.drawString(font, advHeader, innerX + 20, y, ACCENT_COLOR, false);
@@ -2118,7 +2120,7 @@ public class ChronicleScreen extends Screen {
             y += 6;
 
             for (ChronicleEntry entry : otherEntries) {
-                ChronicleDetail detail = new ChronicleDetail(entry.title(), entry.details(), entry.iconItemId(), entry.dayIndex(), entry.actorUuid(), entry.actorName());
+                ChronicleDetail detail = new ChronicleDetail(entry.title(), entry.details(), entry.iconItemId(), entry.sourceId(), entry.dayIndex(), entry.actorUuid(), entry.actorName());
                 int rowHeight = measureDetailHeight(ChronicleEntryType.ADVANCEMENT, detail, textWidth, lineHeight, iconSize, faceSize);
                 if (y + rowHeight < contentAreaY) {
                     y += rowHeight + rowGap;
@@ -2141,11 +2143,12 @@ public class ChronicleScreen extends Screen {
                     textY = y + faceSize + faceGap;
                 }
 
-                g.drawString(font, "Advancement: " + detail.title(), textX, textY, 0xFFE0E2EC, false);
+                Component title = titleComponentForEntry(ChronicleEntryType.ADVANCEMENT, detail.title(), detail.sourceId());
+                g.drawString(font, Component.translatable("gui.rpgtimeline.label.advancement", title), textX, textY, 0xFFE0E2EC, false);
                 textY += lineHeight;
-                String description = detail.description();
-                if (description != null && !description.isBlank()) {
-                    List<net.minecraft.util.FormattedCharSequence> lines = font.split(Component.literal(description), textWidth);
+                Component description = descriptionComponentForEntry(ChronicleEntryType.ADVANCEMENT, detail.description(), detail.sourceId());
+                if (description != null && !description.getString().isBlank()) {
+                    List<net.minecraft.util.FormattedCharSequence> lines = font.split(description, textWidth);
                     for (net.minecraft.util.FormattedCharSequence line : lines) {
                         if (textY + lineHeight >= contentAreaY && textY <= contentAreaY + contentAreaH) {
                             g.drawString(font, line, textX, textY, 0xFFC8CBD6, false);
@@ -2206,7 +2209,7 @@ public class ChronicleScreen extends Screen {
 
     private void drawHoverTooltip(@NotNull GuiGraphics g, ChronicleEntry entry, int mouseX, int mouseY) {
         ItemStack stack = tooltipStackForEntry(entry);
-        Component title = Component.literal(entry.title());
+        Component title = titleComponentForEntry(entry.type(), entry.title(), entry.sourceId());
         if (entry.type() == ChronicleEntryType.WORLD_FIRST) {
             title = title.copy().withStyle(ChatFormatting.GOLD);
         } else if (entry.type() == ChronicleEntryType.ADVANCEMENT) {
@@ -2357,21 +2360,22 @@ public class ChronicleScreen extends Screen {
                         }
                     }
 
-                    String author = detail.actorName() == null || detail.actorName().isBlank() ? "Server" : detail.actorName();
-                    g.drawString(font, "By: " + author, textX, textY, 0xFFB0B4C2, false);
+                    String author = detail.actorName() == null || detail.actorName().isBlank()
+                            ? Component.translatable("gui.rpgtimeline.author.server").getString()
+                            : detail.actorName();
+                    g.drawString(font, Component.translatable("gui.rpgtimeline.label.by", author), textX, textY, 0xFFB0B4C2, false);
                     textY += lineHeight;
                     g.drawString(font, RPGTimelineApi.buildDateString(detail.dayIndex()), textX, textY, 0xFF8F93A2, false);
                 } else {
-                    String label = group.type() == ChronicleEntryType.WORLD_FIRST ? "World First: " : "Advancement: ";
-                    String title = detail.title();
-                    if (group.type() == ChronicleEntryType.WORLD_FIRST && title != null && title.startsWith("World First: ")) {
-                        title = title.substring("World First: ".length());
-                    }
-                    g.drawString(font, label + title, textX, textY, 0xFFE0E2EC, false);
+                    Component title = titleComponentForEntry(group.type(), detail.title(), detail.sourceId());
+                    Component label = group.type() == ChronicleEntryType.WORLD_FIRST
+                            ? Component.translatable("gui.rpgtimeline.label.world_first", title)
+                            : Component.translatable("gui.rpgtimeline.label.advancement", title);
+                    g.drawString(font, label, textX, textY, 0xFFE0E2EC, false);
                     textY += lineHeight;
-                    String description = detail.description();
-                    if (description != null && !description.isBlank()) {
-                        List<net.minecraft.util.FormattedCharSequence> lines = font.split(Component.literal(description), textWidth);
+                    Component description = descriptionComponentForEntry(group.type(), detail.description(), detail.sourceId());
+                    if (description != null && !description.getString().isBlank()) {
+                        List<net.minecraft.util.FormattedCharSequence> lines = font.split(description, textWidth);
                         for (net.minecraft.util.FormattedCharSequence line : lines) {
                             if (textY + lineHeight >= contentAreaY && textY <= contentAreaY + contentAreaH) {
                                 g.drawString(font, line, textX, textY, 0xFFC8CBD6, false);
@@ -2399,8 +2403,8 @@ public class ChronicleScreen extends Screen {
         layoutAddPanel();
         g.fill(addPanelX, addPanelY, addPanelX + addPanelW, addPanelY + addPanelH, PANEL_COLOR);
         drawAddPanelBorder(g);
-        g.drawString(font, "Add Event", addPanelX + 12, addPanelY + 10, 0xFFEDEDED, false);
-        g.drawString(font, "Date:", addPanelX + 16, addPanelY + 66 + 5, 0xFFB0B4C2, false);
+        g.drawString(font, Component.translatable("gui.rpgtimeline.add_event"), addPanelX + 12, addPanelY + 10, 0xFFEDEDED, false);
+        g.drawString(font, Component.translatable("gui.rpgtimeline.label.date"), addPanelX + 16, addPanelY + 66 + 5, 0xFFB0B4C2, false);
         drawEventMonthDropdownControl(g);
         drawAddPanelButtons(g, mouseX, mouseY);
     }
@@ -2486,7 +2490,97 @@ public class ChronicleScreen extends Screen {
         }
         String description = entry.details() == null ? "" : entry.details();
         String iconId = entry.iconItemId() == null ? "" : entry.iconItemId();
-        return List.of(new ChronicleDetail(entry.title(), description, iconId, entry.dayIndex(), entry.actorUuid(), entry.actorName()));
+        return List.of(new ChronicleDetail(entry.title(), description, iconId, entry.sourceId(), entry.dayIndex(), entry.actorUuid(), entry.actorName()));
+    }
+
+    private Component titleComponentForEntry(ChronicleEntryType type, String title, String sourceId) {
+        if (title == null || title.isBlank()) {
+            return Component.empty();
+        }
+        if (type == ChronicleEntryType.ADVANCEMENT || type == ChronicleEntryType.WORLD_FIRST) {
+            Component fromId = resolveAdvancementTitle(sourceId);
+            if (fromId != null && !fromId.getString().isBlank()) {
+                return fromId;
+            }
+            String cleaned = type == ChronicleEntryType.WORLD_FIRST ? stripLegacyWorldFirst(title) : title;
+            return parseJsonComponent(cleaned);
+        }
+        return Component.literal(title);
+    }
+
+    private Component descriptionComponentForEntry(ChronicleEntryType type, String description, String sourceId) {
+        if (description == null || description.isBlank()) {
+            return Component.empty();
+        }
+        if (type == ChronicleEntryType.ADVANCEMENT || type == ChronicleEntryType.WORLD_FIRST) {
+            Component fromId = resolveAdvancementDescription(sourceId);
+            if (fromId != null && !fromId.getString().isBlank()) {
+                return fromId;
+            }
+            return parseJsonComponent(description);
+        }
+        return Component.literal(description);
+    }
+
+    private Component parseJsonComponent(String text) {
+        if (text == null || text.isBlank()) {
+            return Component.empty();
+        }
+        String trimmed = text.trim();
+        if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+            try {
+                Component parsed = Component.Serializer.fromJson(trimmed, getRegistryProvider());
+                if (parsed != null) {
+                    return parsed;
+                }
+            } catch (Throwable ignored) {
+                // fallback to literal
+            }
+        }
+        return Component.literal(text);
+    }
+
+    private String stripLegacyWorldFirst(String title) {
+        String prefix = "World First: ";
+        if (title != null && title.startsWith(prefix)) {
+            return title.substring(prefix.length());
+        }
+        return title;
+    }
+
+    private Component resolveAdvancementTitle(String sourceId) {
+        DisplayInfo display = getAdvancementDisplay(sourceId);
+        return display == null ? Component.empty() : display.getTitle();
+    }
+
+    private Component resolveAdvancementDescription(String sourceId) {
+        DisplayInfo display = getAdvancementDisplay(sourceId);
+        return display == null ? Component.empty() : display.getDescription();
+    }
+
+    private DisplayInfo getAdvancementDisplay(String sourceId) {
+        if (sourceId == null || sourceId.isBlank() || minecraft == null) {
+            return null;
+        }
+        ResourceLocation rl = ResourceLocation.tryParse(sourceId);
+        if (rl == null) {
+            return null;
+        }
+        if (minecraft.getConnection() == null) {
+            return null;
+        }
+        AdvancementHolder holder = minecraft.getConnection().getAdvancements().get(rl);
+        if (holder == null) {
+            return null;
+        }
+        return holder.value().display().orElse(null);
+    }
+
+    private RegistryAccess getRegistryProvider() {
+        if (minecraft != null && minecraft.level != null) {
+            return minecraft.level.registryAccess();
+        }
+        return RegistryAccess.EMPTY;
     }
 
     private int headerColorForType(ChronicleEntryType type) {
@@ -2503,16 +2597,16 @@ public class ChronicleScreen extends Screen {
         int textHeight;
         if (type == ChronicleEntryType.ADMIN_NOTE) {
             int lines = 3;
-            String details = detail.description();
-            if (details != null && !details.isBlank()) {
-                lines += font.split(Component.literal(details), textWidth).size();
+            Component details = descriptionComponentForEntry(type, detail.description(), detail.sourceId());
+            if (details != null && !details.getString().isBlank()) {
+                lines += font.split(details, textWidth).size();
             }
             textHeight = lines * lineHeight;
         } else {
             int lines = 2;
-            String description = detail.description();
-            if (description != null && !description.isBlank()) {
-                lines += font.split(Component.literal(description), textWidth).size();
+            Component description = descriptionComponentForEntry(type, detail.description(), detail.sourceId());
+            if (description != null && !description.getString().isBlank()) {
+                lines += font.split(description, textWidth).size();
             }
             textHeight = lines * lineHeight;
         }
@@ -2586,14 +2680,14 @@ public class ChronicleScreen extends Screen {
         }
         String name = playerName == null || playerName.isBlank() ? findHallOfFameName(playerUuid) : playerName;
         if (name == null || name.isBlank()) {
-            name = "Player";
+            name = Component.translatable("gui.rpgtimeline.label.player").getString();
         }
         int worldFirsts = getWorldFirstCount(playerUuid);
         int others = otherCounts.getOrDefault(playerUuid, 0);
         List<net.minecraft.util.FormattedCharSequence> tooltip = List.of(
                 Component.literal(name).withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD),
-                Component.literal("World-firsts: " + worldFirsts).withStyle(ChatFormatting.GRAY),
-                Component.literal("Advancements: " + others).withStyle(ChatFormatting.GRAY)
+                Component.translatable("gui.rpgtimeline.label.world_firsts_count", worldFirsts).withStyle(ChatFormatting.GRAY),
+                Component.translatable("gui.rpgtimeline.label.advancements_count", others).withStyle(ChatFormatting.GRAY)
         ).stream().map(Component::getVisualOrderText).toList();
         g.renderTooltip(font, tooltip, mouseX, mouseY);
     }
@@ -2682,14 +2776,14 @@ public class ChronicleScreen extends Screen {
 
         if (category == NodeCategory.NOTES) {
             type = ChronicleEntryType.ADMIN_NOTE;
-            title = formatCountTitle(count, "Note");
+            title = formatCountTitle(count, "gui.rpgtimeline.group.note");
         } else if (category == NodeCategory.WORLD_FIRST) {
             type = ChronicleEntryType.WORLD_FIRST;
             highlight = true;
-            title = formatCountTitle(count, "World-first advancement");
+            title = formatCountTitle(count, "gui.rpgtimeline.group.world_first_advancement");
         } else {
             type = ChronicleEntryType.ADVANCEMENT;
-            title = formatCountTitle(count, "Advancement");
+            title = formatCountTitle(count, "gui.rpgtimeline.group.advancement");
         }
 
         String iconId = first.iconItemId();
@@ -2707,6 +2801,7 @@ public class ChronicleScreen extends Screen {
                 details,
                 "",
                 "",
+                "",
                 highlight,
                 true,
                 iconId,
@@ -2714,14 +2809,9 @@ public class ChronicleScreen extends Screen {
         );
     }
 
-    private String formatCountTitle(int count, String base) {
-        String label = base;
-        if (count != 1) {
-            if (!base.endsWith("s")) {
-                label = base + "s";
-            }
-        }
-        return count + "x " + label;
+    private String formatCountTitle(int count, String labelKey) {
+        String label = Component.translatable(labelKey).getString();
+        return Component.translatable("gui.rpgtimeline.group.count", count, label).getString();
     }
 
     private List<ChronicleDetail> buildDrilldown(List<ChronicleEntry> entries) {
@@ -2732,7 +2822,7 @@ public class ChronicleScreen extends Screen {
                 .forEach(entry -> {
                     String description = entry.details() == null ? "" : entry.details();
                     String iconId = entry.iconItemId() == null ? "" : entry.iconItemId();
-                    details.add(new ChronicleDetail(entry.title(), description, iconId, entry.dayIndex(), entry.actorUuid(), entry.actorName()));
+                    details.add(new ChronicleDetail(entry.title(), description, iconId, entry.sourceId(), entry.dayIndex(), entry.actorUuid(), entry.actorName()));
                 });
         return details;
     }

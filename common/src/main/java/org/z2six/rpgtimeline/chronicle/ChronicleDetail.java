@@ -7,6 +7,7 @@ public record ChronicleDetail(
         String title,
         String description,
         String iconItemId,
+        String sourceId,
         long dayIndex,
         String actorUuid,
         String actorName

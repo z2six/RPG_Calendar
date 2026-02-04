@@ -522,15 +522,7 @@ public final class ChroniclePayloads {
 
     private static final class ChronicleEntryCodec {
         private static final StreamCodec<RegistryFriendlyByteBuf, ChronicleDetail> DETAIL_CODEC =
-                StreamCodec.composite(
-                        ByteBufCodecs.STRING_UTF8, ChronicleDetail::title,
-                        ByteBufCodecs.STRING_UTF8, ChronicleDetail::description,
-                        ByteBufCodecs.STRING_UTF8, ChronicleDetail::iconItemId,
-                        ByteBufCodecs.VAR_LONG, ChronicleDetail::dayIndex,
-                        ByteBufCodecs.STRING_UTF8, ChronicleDetail::actorUuid,
-                        ByteBufCodecs.STRING_UTF8, ChronicleDetail::actorName,
-                        ChronicleDetail::new
-                );
+                StreamCodec.of(ChronicleEntryCodec::encodeDetail, ChronicleEntryCodec::decodeDetail);
         private static final StreamCodec<RegistryFriendlyByteBuf, List<ChronicleDetail>> DETAIL_LIST_CODEC =
                 DETAIL_CODEC.apply(ByteBufCodecs.list());
 
@@ -547,6 +539,7 @@ public final class ChroniclePayloads {
             ByteBufCodecs.VAR_LONG.encode(buf, entry.dayIndex());
             ByteBufCodecs.STRING_UTF8.encode(buf, safe(entry.title()));
             ByteBufCodecs.STRING_UTF8.encode(buf, safe(entry.details()));
+            ByteBufCodecs.STRING_UTF8.encode(buf, safe(entry.sourceId()));
             ByteBufCodecs.STRING_UTF8.encode(buf, safe(entry.actorName()));
             ByteBufCodecs.STRING_UTF8.encode(buf, safe(entry.actorUuid()));
             ByteBufCodecs.BOOL.encode(buf, entry.highlight());
@@ -559,6 +552,27 @@ public final class ChroniclePayloads {
             DETAIL_LIST_CODEC.encode(buf, drilldown);
         }
 
+        private static void encodeDetail(RegistryFriendlyByteBuf buf, ChronicleDetail detail) {
+            ByteBufCodecs.STRING_UTF8.encode(buf, safe(detail.title()));
+            ByteBufCodecs.STRING_UTF8.encode(buf, safe(detail.description()));
+            ByteBufCodecs.STRING_UTF8.encode(buf, safe(detail.iconItemId()));
+            ByteBufCodecs.STRING_UTF8.encode(buf, safe(detail.sourceId()));
+            ByteBufCodecs.VAR_LONG.encode(buf, detail.dayIndex());
+            ByteBufCodecs.STRING_UTF8.encode(buf, safe(detail.actorUuid()));
+            ByteBufCodecs.STRING_UTF8.encode(buf, safe(detail.actorName()));
+        }
+
+        private static ChronicleDetail decodeDetail(RegistryFriendlyByteBuf buf) {
+            String title = ByteBufCodecs.STRING_UTF8.decode(buf);
+            String description = ByteBufCodecs.STRING_UTF8.decode(buf);
+            String iconItemId = ByteBufCodecs.STRING_UTF8.decode(buf);
+            String sourceId = ByteBufCodecs.STRING_UTF8.decode(buf);
+            long dayIndex = ByteBufCodecs.VAR_LONG.decode(buf);
+            String actorUuid = ByteBufCodecs.STRING_UTF8.decode(buf);
+            String actorName = ByteBufCodecs.STRING_UTF8.decode(buf);
+            return new ChronicleDetail(title, description, iconItemId, sourceId, dayIndex, actorUuid, actorName);
+        }
+
         private static ChronicleEntry decodeEntry(RegistryFriendlyByteBuf buf) {
             String id = ByteBufCodecs.STRING_UTF8.decode(buf);
             String type = ByteBufCodecs.STRING_UTF8.decode(buf);
@@ -566,6 +580,7 @@ public final class ChroniclePayloads {
             long dayIndex = ByteBufCodecs.VAR_LONG.decode(buf);
             String title = ByteBufCodecs.STRING_UTF8.decode(buf);
             String details = ByteBufCodecs.STRING_UTF8.decode(buf);
+            String sourceId = ByteBufCodecs.STRING_UTF8.decode(buf);
             String actorName = ByteBufCodecs.STRING_UTF8.decode(buf);
             String actorUuid = ByteBufCodecs.STRING_UTF8.decode(buf);
             boolean highlight = ByteBufCodecs.BOOL.decode(buf);
@@ -579,6 +594,7 @@ public final class ChroniclePayloads {
                     dayIndex,
                     title,
                     details,
+                    sourceId,
                     actorName,
                     actorUuid,
                     highlight,
@@ -595,6 +611,7 @@ public final class ChroniclePayloads {
                 long dayIndex,
                 String title,
                 String details,
+                String sourceId,
                 String actorName,
                 String actorUuid,
                 boolean highlight,
@@ -621,6 +638,7 @@ public final class ChroniclePayloads {
                     dayIndex,
                     title,
                     details,
+                    sourceId,
                     actorName,
                     actorUuid,
                     highlight,

@@ -12,6 +12,7 @@ public record ChronicleEntry(
         long dayIndex,
         String title,
         String details,
+        String sourceId,
         String actorName,
         String actorUuid,
         boolean highlight,
