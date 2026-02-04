@@ -36,6 +36,7 @@ import org.z2six.rpgtimeline.client.tooltip.ChronicleItemTooltipClient;
 import org.z2six.rpgtimeline.client.compat.SereneSeasonsCompat;
 import org.z2six.rpgtimeline.api.RPGTimelineApi;
 import org.z2six.rpgtimeline.calendar.CalendarDefinition;
+import org.z2six.rpgtimeline.calendar.SeasonMonthMapping;
 import org.z2six.rpgtimeline.chronicle.ChronicleDetail;
 import org.z2six.rpgtimeline.chronicle.ChronicleEntry;
 import org.z2six.rpgtimeline.chronicle.ChronicleEntryType;
@@ -43,6 +44,7 @@ import org.z2six.rpgtimeline.chronicle.ChronicleScope;
 import org.z2six.rpgtimeline.chronicle.HallOfFameEntry;
 import org.z2six.rpgtimeline.chronicle.ChronicleTimeframe;
 import org.z2six.rpgtimeline.network.ChroniclePayloads;
+import org.z2six.rpgtimeline.network.RPGTimelinePayloads;
 import org.z2six.rpgtimeline.registry.RPGTimelineItems;
 import net.neoforged.neoforge.network.PacketDistributor;
 
@@ -1377,26 +1379,10 @@ public class ChronicleScreen extends Screen {
         if (minecraft == null || minecraft.level == null) {
             return;
         }
-        SereneSeasonsCompat.SeasonSnapshot snapshot = SereneSeasonsCompat.getSeasonSnapshot(minecraft.level);
-        if (snapshot == null) {
-            return;
-        }
-        int seasonDuration = snapshot.seasonDuration();
-        int cycleDuration = snapshot.cycleDuration();
-        int cycleTicks = snapshot.cycleTicks();
-        if (seasonDuration <= 0 || cycleDuration <= 0) {
-            return;
-        }
         long ticksPerDay = def.getTicksPerDay();
         if (ticksPerDay <= 0L) {
             ticksPerDay = 24000L;
         }
-        double viewStartTick = viewStartUnit * (double) ticksPerDay;
-        double viewEndTick = (viewStartUnit + viewUnits) * (double) ticksPerDay;
-        long cycleStart = dayTime - cycleTicks;
-        long cycles = Math.floorDiv((long) Math.floor(viewStartTick) - cycleStart, cycleDuration);
-        cycleStart += cycles * cycleDuration;
-
         int inset = 1;
         int frameY = timelineAreaY + inset;
         int frameH = Math.max(0, timelineAreaH - inset * 2);
@@ -1404,22 +1390,130 @@ public class ChronicleScreen extends Screen {
             return;
         }
 
+        SeasonMonthMapping mapping = RPGTimelinePayloads.ClientState.getSeasonMonthMapping(def.getMonthCount());
+        boolean useSereneSeasons = RPGTimelinePayloads.ClientState.useSereneSeasons();
+        SereneSeasonsCompat.SeasonSnapshot snapshot = useSereneSeasons
+                ? SereneSeasonsCompat.getSeasonSnapshot(minecraft.level)
+                : null;
+
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
-        for (long cycleTick = cycleStart; cycleTick < viewEndTick; cycleTick += cycleDuration) {
-            for (int seasonIndex = 0; seasonIndex < 4; seasonIndex++) {
-                long seasonStartTick = cycleTick + (long) seasonIndex * seasonDuration;
-                long seasonEndTick = seasonStartTick + seasonDuration;
-                if (seasonEndTick < viewStartTick || seasonStartTick > viewEndTick) {
-                    continue;
+        if (snapshot != null) {
+            int seasonDuration = snapshot.seasonDuration();
+            int cycleDuration = snapshot.cycleDuration();
+            int cycleTicks = snapshot.cycleTicks();
+            if (seasonDuration > 0 && cycleDuration > 0) {
+                double viewStartTick = viewStartUnit * (double) ticksPerDay;
+                double viewEndTick = (viewStartUnit + viewUnits) * (double) ticksPerDay;
+                long cycleStart = dayTime - cycleTicks;
+                long cycles = Math.floorDiv((long) Math.floor(viewStartTick) - cycleStart, cycleDuration);
+                cycleStart += cycles * cycleDuration;
+
+                for (long cycleTick = cycleStart; cycleTick < viewEndTick; cycleTick += cycleDuration) {
+                    for (int seasonIndex = 0; seasonIndex < 4; seasonIndex++) {
+                        long seasonStartTick = cycleTick + (long) seasonIndex * seasonDuration;
+                        long seasonEndTick = seasonStartTick + seasonDuration;
+                        if (seasonEndTick < viewStartTick || seasonStartTick > viewEndTick) {
+                            continue;
+                        }
+                        float startDay = (float) (seasonStartTick / (double) ticksPerDay);
+                        float endDay = (float) (seasonEndTick / (double) ticksPerDay);
+                        renderSeasonSlice(g, seasonIndex, startDay, endDay, viewStartUnit, frameY, frameH,
+                                seasonStartTick, seasonDuration, ticksPerDay);
+                    }
                 }
-                float startDay = (float) (seasonStartTick / (double) ticksPerDay);
-                float endDay = (float) (seasonEndTick / (double) ticksPerDay);
-                renderSeasonSlice(g, seasonIndex, startDay, endDay, viewStartUnit, frameY, frameH,
-                        seasonStartTick, seasonDuration, ticksPerDay);
+                RenderSystem.disableBlend();
+                return;
             }
         }
+        drawSeasonOverlaysFromCalendar(g, def, viewStartUnit, viewUnits, mapping, frameY, frameH, ticksPerDay);
         RenderSystem.disableBlend();
+    }
+
+    private void drawSeasonOverlaysFromCalendar(@NotNull GuiGraphics g, CalendarDefinition def,
+                                                float viewStartUnit, float viewUnits,
+                                                SeasonMonthMapping mapping, int frameY, int frameH, long ticksPerDay) {
+        int daysPerMonth = def.getDaysPerMonth();
+        int monthsPerYear = def.getMonthCount();
+        if (daysPerMonth <= 0 || monthsPerYear <= 0) {
+            return;
+        }
+        long daysPerYear = (long) daysPerMonth * (long) monthsPerYear;
+        if (daysPerYear <= 0L) {
+            return;
+        }
+
+        long startDay = (long) Math.floor(viewStartUnit);
+        long endDay = (long) Math.ceil(viewStartUnit + viewUnits);
+        long startYear = Math.max(0L, Math.floorDiv(startDay, daysPerYear));
+        long endYear = Math.max(0L, Math.floorDiv(endDay, daysPerYear));
+
+        int seasonDuration = (int) Math.max(1L, Math.min(Integer.MAX_VALUE, (long) daysPerMonth * ticksPerDay));
+
+        for (long year = startYear; year <= endYear; year++) {
+            renderSeasonMonths(g, 0, mapping.spring(), year, daysPerMonth, daysPerYear, viewStartUnit, viewUnits,
+                    frameY, frameH, ticksPerDay, seasonDuration);
+            renderSeasonMonths(g, 1, mapping.summer(), year, daysPerMonth, daysPerYear, viewStartUnit, viewUnits,
+                    frameY, frameH, ticksPerDay, seasonDuration);
+            renderSeasonMonths(g, 2, mapping.autumn(), year, daysPerMonth, daysPerYear, viewStartUnit, viewUnits,
+                    frameY, frameH, ticksPerDay, seasonDuration);
+            renderSeasonMonths(g, 3, mapping.winter(), year, daysPerMonth, daysPerYear, viewStartUnit, viewUnits,
+                    frameY, frameH, ticksPerDay, seasonDuration);
+        }
+    }
+
+    private void renderSeasonMonths(@NotNull GuiGraphics g, int seasonIndex, List<Integer> months, long year,
+                                    int daysPerMonth, long daysPerYear, float viewStartUnit, float viewUnits,
+                                    int frameY, int frameH, long ticksPerDay, int seasonDuration) {
+        if (months == null || months.isEmpty()) {
+            return;
+        }
+        float viewEnd = viewStartUnit + viewUnits;
+        List<Integer> sorted = new ArrayList<>(months);
+        sorted.sort(Integer::compareTo);
+
+        int rangeStart = -1;
+        int rangeEnd = -1;
+        for (int idx = 0; idx < sorted.size(); idx++) {
+            int monthIndex = sorted.get(idx);
+            if (monthIndex < 0) {
+                continue;
+            }
+            if (rangeStart < 0) {
+                rangeStart = monthIndex;
+                rangeEnd = monthIndex;
+                continue;
+            }
+            if (monthIndex == rangeEnd + 1) {
+                rangeEnd = monthIndex;
+            } else {
+                renderSeasonRange(g, seasonIndex, rangeStart, rangeEnd, year, daysPerMonth, daysPerYear,
+                        viewStartUnit, viewEnd, frameY, frameH, ticksPerDay);
+                rangeStart = monthIndex;
+                rangeEnd = monthIndex;
+            }
+        }
+        if (rangeStart >= 0) {
+            renderSeasonRange(g, seasonIndex, rangeStart, rangeEnd, year, daysPerMonth, daysPerYear,
+                    viewStartUnit, viewEnd, frameY, frameH, ticksPerDay);
+        }
+    }
+
+    private void renderSeasonRange(@NotNull GuiGraphics g, int seasonIndex, int startMonth, int endMonth, long year,
+                                   int daysPerMonth, long daysPerYear, float viewStartUnit, float viewEnd,
+                                   int frameY, int frameH, long ticksPerDay) {
+        long monthStartDay = year * daysPerYear + (long) startMonth * daysPerMonth;
+        long monthEndDay = year * daysPerYear + (long) (endMonth + 1) * daysPerMonth;
+        if (monthEndDay < viewStartUnit || monthStartDay > viewEnd) {
+            return;
+        }
+        float startDay = (float) monthStartDay;
+        float endDay = (float) monthEndDay;
+        long seasonStartTick = monthStartDay * ticksPerDay;
+        long rangeTicks = (long) (endMonth - startMonth + 1) * daysPerMonth * ticksPerDay;
+        int seasonDuration = (int) Math.max(1L, Math.min(Integer.MAX_VALUE, rangeTicks));
+        renderSeasonSlice(g, seasonIndex, startDay, endDay, viewStartUnit, frameY, frameH,
+                seasonStartTick, seasonDuration, ticksPerDay);
     }
 
     private void renderSeasonSlice(@NotNull GuiGraphics g, int seasonIndex, float startDay, float endDay,

@@ -79,8 +79,22 @@ public final class RPGTimelineServerSyncEvents {
             int daysPerMonth = RPGTimelineConfig.getDaysPerMonth();
             int ticksPerDay = RPGTimelineConfig.TICKS_PER_DAY;
             boolean useCustomFontNow = RPGTimelineConfig.getUseCustomFont();
+            boolean useSereneSeasons = RPGTimelineConfig.getUseSereneSeasons();
+            org.z2six.rpgtimeline.calendar.SeasonMonthMapping mapping = RPGTimelineConfig.getSeasonMonthMapping();
 
-            int settingsHash = Objects.hash(monthNames, monthAbbreviations, yearSuffix, daysPerMonth, ticksPerDay, useCustomFontNow);
+            int settingsHash = Objects.hash(
+                    monthNames,
+                    monthAbbreviations,
+                    yearSuffix,
+                    daysPerMonth,
+                    ticksPerDay,
+                    useCustomFontNow,
+                    useSereneSeasons,
+                    mapping.spring(),
+                    mapping.summer(),
+                    mapping.autumn(),
+                    mapping.winter()
+            );
 
             boolean changed = false;
             if (!lastInitialized) {

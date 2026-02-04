@@ -14,6 +14,7 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import org.slf4j.Logger;
 import org.z2six.rpgtimeline.Constants;
+import org.z2six.rpgtimeline.calendar.SeasonMonthMapping;
 import org.z2six.rpgtimeline.config.RPGTimelineConfig;
 
 import java.util.ArrayList;
@@ -29,7 +30,7 @@ public final class RPGTimelinePayloads {
     /**
      * Bump if you change payload shapes. Must match client + server.
      */
-    private static final String PROTOCOL_VERSION = "2";
+    private static final String PROTOCOL_VERSION = "3";
 
     private RPGTimelinePayloads() {
         // no-op
@@ -72,6 +73,8 @@ public final class RPGTimelinePayloads {
         private static volatile boolean hasSynced = false;
         private static volatile boolean useCustomFont = RPGTimelineConfig.DEFAULT_USE_CUSTOM_FONT;
         private static volatile org.z2six.rpgtimeline.calendar.CalendarDefinition calendarDefinition = null;
+        private static volatile SeasonMonthMapping seasonMonthMapping = null;
+        private static volatile boolean useSereneSeasons = RPGTimelineConfig.DEFAULT_USE_SERENE_SEASONS;
 
         private ClientState() {
             // no-op
@@ -92,15 +95,32 @@ public final class RPGTimelinePayloads {
             return org.z2six.rpgtimeline.calendar.CalendarDefinition.defaultDefinition();
         }
 
+        public static SeasonMonthMapping getSeasonMonthMapping(int monthCount) {
+            if (seasonMonthMapping != null) {
+                return seasonMonthMapping;
+            }
+            return SeasonMonthMapping.defaultForMonthCount(monthCount);
+        }
+
+        public static boolean useSereneSeasons() {
+            return useSereneSeasons;
+        }
+
         private static void applyFromServer(
                 List<String> monthNames,
                 List<String> monthAbbreviations,
                 String yearSuffix,
                 int daysPerMonth,
                 int ticksPerDay,
-                boolean newUseCustomFont
+                boolean newUseCustomFont,
+                boolean newUseSereneSeasons,
+                List<Integer> springMonths,
+                List<Integer> summerMonths,
+                List<Integer> autumnMonths,
+                List<Integer> winterMonths
         ) {
             useCustomFont = newUseCustomFont;
+            useSereneSeasons = newUseSereneSeasons;
             try {
                 String[] namesArray = monthNames.toArray(new String[0]);
                 String[] abbrevArray = monthAbbreviations.toArray(new String[0]);
@@ -115,6 +135,12 @@ public final class RPGTimelinePayloads {
                 LOG.error("[RPGTimelinePayloads.ClientState] Failed to build CalendarDefinition from server data", t);
                 calendarDefinition = org.z2six.rpgtimeline.calendar.CalendarDefinition.defaultDefinition();
             }
+            seasonMonthMapping = new SeasonMonthMapping(
+                    springMonths == null ? List.of() : springMonths,
+                    summerMonths == null ? List.of() : summerMonths,
+                    autumnMonths == null ? List.of() : autumnMonths,
+                    winterMonths == null ? List.of() : winterMonths
+            );
             hasSynced = true;
 
             LOG.debug("[RPGTimelinePayloads.ClientState] Applied server settings: useCustomFont={}", newUseCustomFont);
@@ -124,6 +150,8 @@ public final class RPGTimelinePayloads {
             hasSynced = false;
             useCustomFont = RPGTimelineConfig.DEFAULT_USE_CUSTOM_FONT;
             calendarDefinition = null;
+            seasonMonthMapping = null;
+            useSereneSeasons = RPGTimelineConfig.DEFAULT_USE_SERENE_SEASONS;
             LOG.debug("[RPGTimelinePayloads.ClientState] Cleared client cache");
         }
     }
@@ -141,7 +169,12 @@ public final class RPGTimelinePayloads {
             String yearSuffix,
             int daysPerMonth,
             int ticksPerDay,
-            boolean useCustomFont
+            boolean useCustomFont,
+            boolean useSereneSeasons,
+            List<Integer> springMonths,
+            List<Integer> summerMonths,
+            List<Integer> autumnMonths,
+            List<Integer> winterMonths
     )
             implements net.minecraft.network.protocol.common.custom.CustomPacketPayload {
 
@@ -151,19 +184,52 @@ public final class RPGTimelinePayloads {
         public static final Type<ServerCalendarSettingsPayload> TYPE = new Type<>(ID);
 
         public static final StreamCodec<RegistryFriendlyByteBuf, ServerCalendarSettingsPayload> STREAM_CODEC =
-                StreamCodec.composite(
-                        ByteBufCodecs.collection(ArrayList::new, ByteBufCodecs.STRING_UTF8), ServerCalendarSettingsPayload::monthNames,
-                        ByteBufCodecs.collection(ArrayList::new, ByteBufCodecs.STRING_UTF8), ServerCalendarSettingsPayload::monthAbbreviations,
-                        ByteBufCodecs.STRING_UTF8, ServerCalendarSettingsPayload::yearSuffix,
-                        ByteBufCodecs.INT, ServerCalendarSettingsPayload::daysPerMonth,
-                        ByteBufCodecs.INT, ServerCalendarSettingsPayload::ticksPerDay,
-                        ByteBufCodecs.BOOL, ServerCalendarSettingsPayload::useCustomFont,
-                        ServerCalendarSettingsPayload::new
-                );
+                StreamCodec.of(ServerCalendarSettingsPayload::encode, ServerCalendarSettingsPayload::decode);
 
         @Override
         public Type<? extends net.minecraft.network.protocol.common.custom.CustomPacketPayload> type() {
             return TYPE;
+        }
+
+        private static void encode(RegistryFriendlyByteBuf buf, ServerCalendarSettingsPayload payload) {
+            ByteBufCodecs.collection(ArrayList::new, ByteBufCodecs.STRING_UTF8).encode(buf, new ArrayList<>(payload.monthNames()));
+            ByteBufCodecs.collection(ArrayList::new, ByteBufCodecs.STRING_UTF8).encode(buf, new ArrayList<>(payload.monthAbbreviations()));
+            ByteBufCodecs.STRING_UTF8.encode(buf, payload.yearSuffix());
+            ByteBufCodecs.INT.encode(buf, payload.daysPerMonth());
+            ByteBufCodecs.INT.encode(buf, payload.ticksPerDay());
+            ByteBufCodecs.BOOL.encode(buf, payload.useCustomFont());
+            ByteBufCodecs.BOOL.encode(buf, payload.useSereneSeasons());
+            ByteBufCodecs.collection(ArrayList::new, ByteBufCodecs.INT).encode(buf, new ArrayList<>(payload.springMonths()));
+            ByteBufCodecs.collection(ArrayList::new, ByteBufCodecs.INT).encode(buf, new ArrayList<>(payload.summerMonths()));
+            ByteBufCodecs.collection(ArrayList::new, ByteBufCodecs.INT).encode(buf, new ArrayList<>(payload.autumnMonths()));
+            ByteBufCodecs.collection(ArrayList::new, ByteBufCodecs.INT).encode(buf, new ArrayList<>(payload.winterMonths()));
+        }
+
+        private static ServerCalendarSettingsPayload decode(RegistryFriendlyByteBuf buf) {
+            List<String> monthNames = ByteBufCodecs.collection(ArrayList::new, ByteBufCodecs.STRING_UTF8).decode(buf);
+            List<String> monthAbbreviations = ByteBufCodecs.collection(ArrayList::new, ByteBufCodecs.STRING_UTF8).decode(buf);
+            String yearSuffix = ByteBufCodecs.STRING_UTF8.decode(buf);
+            int daysPerMonth = ByteBufCodecs.INT.decode(buf);
+            int ticksPerDay = ByteBufCodecs.INT.decode(buf);
+            boolean useCustomFont = ByteBufCodecs.BOOL.decode(buf);
+            boolean useSereneSeasons = ByteBufCodecs.BOOL.decode(buf);
+            List<Integer> springMonths = ByteBufCodecs.collection(ArrayList::new, ByteBufCodecs.INT).decode(buf);
+            List<Integer> summerMonths = ByteBufCodecs.collection(ArrayList::new, ByteBufCodecs.INT).decode(buf);
+            List<Integer> autumnMonths = ByteBufCodecs.collection(ArrayList::new, ByteBufCodecs.INT).decode(buf);
+            List<Integer> winterMonths = ByteBufCodecs.collection(ArrayList::new, ByteBufCodecs.INT).decode(buf);
+            return new ServerCalendarSettingsPayload(
+                    monthNames,
+                    monthAbbreviations,
+                    yearSuffix,
+                    daysPerMonth,
+                    ticksPerDay,
+                    useCustomFont,
+                    useSereneSeasons,
+                    springMonths,
+                    summerMonths,
+                    autumnMonths,
+                    winterMonths
+            );
         }
     }
 
@@ -184,6 +250,8 @@ public final class RPGTimelinePayloads {
             String yearSuffix = RPGTimelineConfig.getYearSuffix();
             int daysPerMonth = RPGTimelineConfig.getDaysPerMonth();
             int ticksPerDay = RPGTimelineConfig.TICKS_PER_DAY;
+            boolean useSereneSeasons = RPGTimelineConfig.getUseSereneSeasons();
+            SeasonMonthMapping mapping = RPGTimelineConfig.getSeasonMonthMapping();
 
             ServerCalendarSettingsPayload msg = new ServerCalendarSettingsPayload(
                     monthNames,
@@ -191,7 +259,12 @@ public final class RPGTimelinePayloads {
                     yearSuffix,
                     daysPerMonth,
                     ticksPerDay,
-                    useCustomFontValue
+                    useCustomFontValue,
+                    useSereneSeasons,
+                    new ArrayList<>(mapping.spring()),
+                    new ArrayList<>(mapping.summer()),
+                    new ArrayList<>(mapping.autumn()),
+                    new ArrayList<>(mapping.winter())
             );
             PacketDistributor.sendToPlayer(player, msg);
 
@@ -238,7 +311,12 @@ public final class RPGTimelinePayloads {
                             payload.yearSuffix(),
                             payload.daysPerMonth(),
                             payload.ticksPerDay(),
-                            payload.useCustomFont()
+                            payload.useCustomFont(),
+                            payload.useSereneSeasons(),
+                            payload.springMonths(),
+                            payload.summerMonths(),
+                            payload.autumnMonths(),
+                            payload.winterMonths()
                     );
                 } catch (Throwable t) {
                     LOG.error("[RPGTimelinePayloads] handleServerSettingsSync work failed safely", t);

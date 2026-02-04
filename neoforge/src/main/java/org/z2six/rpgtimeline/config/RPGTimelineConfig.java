@@ -6,6 +6,7 @@ import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.common.ModConfigSpec;
 import org.slf4j.Logger;
 import org.z2six.rpgtimeline.calendar.CalendarDefinition;
+import org.z2six.rpgtimeline.calendar.SeasonMonthMapping;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -54,6 +55,8 @@ public final class RPGTimelineConfig {
     public static final boolean DEFAULT_USE_CUSTOM_FONT = true;
 
     public static final List<String> DEFAULT_MONTH_ABBREVIATIONS = List.of();
+    public static final boolean DEFAULT_USE_SERENE_SEASONS = true;
+    public static final List<String> DEFAULT_SEASON_MONTHS = buildDefaultSeasonMonthEntries(DEFAULT_MONTH_NAMES.length);
 
     public static final List<String> DEFAULT_CUSTOM_GOALS = List.of(
             "break_block|minecraft:stone|1&100&1000&10000",
@@ -99,6 +102,8 @@ public final class RPGTimelineConfig {
     public static final ModConfigSpec.ConfigValue<String> YEAR_SUFFIX;
     public static final ModConfigSpec.IntValue DAYS_PER_MONTH;
     public static final ModConfigSpec.BooleanValue USE_CUSTOM_FONT;
+    public static final ModConfigSpec.BooleanValue USE_SERENE_SEASONS;
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> SEASON_MONTHS;
     public static final ModConfigSpec.ConfigValue<String> CUSTOM_GOALS;
     public static final ModConfigSpec.ConfigValue<String> EVENT_TIMEFRAMES;
 
@@ -168,6 +173,32 @@ public final class RPGTimelineConfig {
                         "This is server-authoritative and hot-reloadable."
                 )
                 .define("useCustomFont", DEFAULT_USE_CUSTOM_FONT);
+
+        USE_SERENE_SEASONS = builder
+                .comment(
+                        "If true and Serene Seasons is installed, use its season calendar for timeline particles.",
+                        "If false (or Serene Seasons is missing), the season-month mapping below is used instead."
+                )
+                .define("useSereneSeasons", DEFAULT_USE_SERENE_SEASONS);
+
+        SEASON_MONTHS = builder
+                .comment(
+                        "Maps calendar months to seasons for timeline particles when Serene Seasons isn't used.",
+                        "Use 1-based month indices based on the current monthNames order.",
+                        "Format: season=monthIndex,monthIndex,...",
+                        "Seasons: spring, summer, autumn (or fall), winter",
+                        "Example (8 months):",
+                        "spring=1,2",
+                        "summer=3,4",
+                        "autumn=5,6",
+                        "winter=7,8",
+                        "If invalid or incomplete, defaults are used."
+                )
+                .defineList(
+                        "seasonMonths",
+                        DEFAULT_SEASON_MONTHS,
+                        o -> (o instanceof String s)
+                );
 
         builder.pop();
 
@@ -316,6 +347,15 @@ public final class RPGTimelineConfig {
         }
     }
 
+    public static boolean getUseSereneSeasons() {
+        try {
+            return USE_SERENE_SEASONS.get();
+        } catch (Throwable t) {
+            LOG.error("[RPGTimelineConfig] getUseSereneSeasons failed, using default {}", DEFAULT_USE_SERENE_SEASONS, t);
+            return DEFAULT_USE_SERENE_SEASONS;
+        }
+    }
+
     public static CalendarDefinition getCalendarDefinition() {
         try {
             List<String> monthNamesList = getMonthNamesList();
@@ -354,6 +394,74 @@ public final class RPGTimelineConfig {
                     (long) TICKS_PER_DAY
             );
         }
+    }
+
+    public static SeasonMonthMapping getSeasonMonthMapping() {
+        List<String> monthNames = getMonthNamesList();
+        int monthCount = monthNames.size();
+        if (monthCount <= 0) {
+            return SeasonMonthMapping.defaultForMonthCount(DEFAULT_MONTH_NAMES.length);
+        }
+
+        List<? extends String> raw = SEASON_MONTHS.get();
+        SeasonMonthMapping fallback = SeasonMonthMapping.defaultForMonthCount(monthCount);
+        if (raw == null || raw.isEmpty()) {
+            return fallback;
+        }
+
+        java.util.Map<String, List<Integer>> parsed = new java.util.HashMap<>();
+        for (String entry : raw) {
+            if (entry == null) {
+                continue;
+            }
+            String trimmed = entry.trim();
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) {
+                continue;
+            }
+            String[] parts = trimmed.split("=", 2);
+            if (parts.length != 2) {
+                LOG.warn("[RPGTimelineConfig] seasonMonths entry '{}' is invalid; expected season=months", trimmed);
+                continue;
+            }
+            String seasonKey = normalizeSeasonKey(parts[0]);
+            if (seasonKey.isEmpty()) {
+                LOG.warn("[RPGTimelineConfig] seasonMonths entry '{}' has invalid season key", trimmed);
+                continue;
+            }
+            String[] tokens = parts[1].split("[,\\s]+");
+            List<Integer> list = parsed.computeIfAbsent(seasonKey, k -> new ArrayList<>());
+            for (String token : tokens) {
+                if (token == null || token.isBlank()) {
+                    continue;
+                }
+                int idx = parseMonthToken(token.trim(), monthNames);
+                if (idx < 0 || idx >= monthCount) {
+                    LOG.warn("[RPGTimelineConfig] seasonMonths token '{}' out of range (1..{})", token, monthCount);
+                    continue;
+                }
+                list.add(idx);
+            }
+        }
+
+        List<Integer> spring = parsed.getOrDefault("spring", List.of());
+        List<Integer> summer = parsed.getOrDefault("summer", List.of());
+        List<Integer> autumn = parsed.getOrDefault("autumn", List.of());
+        List<Integer> winter = parsed.getOrDefault("winter", List.of());
+
+        java.util.Set<Integer> used = new java.util.HashSet<>();
+        spring = filterSeasonMonths(spring, used, monthCount);
+        summer = filterSeasonMonths(summer, used, monthCount);
+        autumn = filterSeasonMonths(autumn, used, monthCount);
+        winter = filterSeasonMonths(winter, used, monthCount);
+
+        int totalUsed = used.size();
+        boolean valid = !spring.isEmpty() && !summer.isEmpty() && !autumn.isEmpty() && !winter.isEmpty() && totalUsed == monthCount;
+        if (!valid) {
+            LOG.warn("[RPGTimelineConfig] seasonMonths invalid/incomplete; using default mapping");
+            return fallback;
+        }
+
+        return new SeasonMonthMapping(spring, summer, autumn, winter);
     }
 
     public static List<String> getMonthNamesList() {
@@ -451,6 +559,77 @@ public final class RPGTimelineConfig {
         }
         String trimmed = value.trim();
         return trimmed.length() <= 3 ? trimmed : trimmed.substring(0, 3);
+    }
+
+    private static String normalizeSeasonKey(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String key = raw.trim().toLowerCase(Locale.ROOT);
+        if (key.equals("fall")) {
+            return "autumn";
+        }
+        return switch (key) {
+            case "spring", "summer", "autumn", "winter" -> key;
+            default -> "";
+        };
+    }
+
+    private static int parseMonthToken(String token, List<String> monthNames) {
+        try {
+            int idx = Integer.parseInt(token);
+            return idx - 1;
+        } catch (NumberFormatException ignored) {
+            String lower = token.toLowerCase(Locale.ROOT);
+            for (int i = 0; i < monthNames.size(); i++) {
+                String name = monthNames.get(i);
+                if (name != null && name.trim().toLowerCase(Locale.ROOT).equals(lower)) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
+    private static List<Integer> filterSeasonMonths(List<Integer> input, java.util.Set<Integer> used, int monthCount) {
+        if (input == null || input.isEmpty()) {
+            return List.of();
+        }
+        List<Integer> filtered = new ArrayList<>();
+        for (Integer value : input) {
+            if (value == null) {
+                continue;
+            }
+            int idx = value;
+            if (idx < 0 || idx >= monthCount) {
+                continue;
+            }
+            if (used.add(idx)) {
+                filtered.add(idx);
+            }
+        }
+        return filtered;
+    }
+
+    private static List<String> buildDefaultSeasonMonthEntries(int monthCount) {
+        SeasonMonthMapping mapping = SeasonMonthMapping.defaultForMonthCount(Math.max(4, monthCount));
+        List<String> entries = new ArrayList<>();
+        entries.add("spring=" + toOneBasedList(mapping.spring()));
+        entries.add("summer=" + toOneBasedList(mapping.summer()));
+        entries.add("autumn=" + toOneBasedList(mapping.autumn()));
+        entries.add("winter=" + toOneBasedList(mapping.winter()));
+        return entries;
+    }
+
+    private static String toOneBasedList(List<Integer> list) {
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < list.size(); i++) {
+            if (i > 0) {
+                builder.append(",");
+            }
+            builder.append(list.get(i) + 1);
+        }
+        return builder.toString();
     }
 
     public static List<String> getCustomGoalEntries() {
