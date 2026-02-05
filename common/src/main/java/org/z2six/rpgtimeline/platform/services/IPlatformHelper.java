@@ -2,7 +2,7 @@ package org.z2six.rpgtimeline.platform.services;
 
 import org.z2six.rpgtimeline.calendar.CalendarDefinition;
 import org.z2six.rpgtimeline.chronicle.ChronicleScope;
-import net.minecraft.advancements.AdvancementHolder;
+import net.minecraft.advancements.Advancement;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -52,7 +52,7 @@ public interface IPlatformHelper {
     /**
      * Records a real advancement on the timeline (server side).
      */
-    void recordAdvancement(ServerPlayer player, AdvancementHolder advancement);
+    void recordAdvancement(ServerPlayer player, Advancement advancement);
 
     /**
      * Records an external/custom advancement-like entry on the timeline.

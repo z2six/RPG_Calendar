@@ -1,7 +1,7 @@
 package org.z2six.rpgtimeline.api;
 
 import com.mojang.logging.LogUtils;
-import net.minecraft.advancements.AdvancementHolder;
+import net.minecraft.advancements.Advancement;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.NotNull;
@@ -178,7 +178,7 @@ public final class RPGTimelineApi {
     /**
      * Records a vanilla/mod advancement on the chronicle timeline.
      */
-    public static void recordAdvancement(ServerPlayer player, AdvancementHolder advancement) {
+    public static void recordAdvancement(ServerPlayer player, Advancement advancement) {
         try {
             if (player == null || advancement == null) {
                 return;

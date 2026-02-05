@@ -6,6 +6,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.inventory.tooltip.TooltipComponent;
+import net.minecraft.world.level.Level;
 import org.z2six.rpgtimeline.tooltip.ChronicleItemTooltip;
 
 import java.util.List;
@@ -21,7 +22,7 @@ public class ChronicleTooltipItem extends Item {
     }
 
     @Override
-    public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
+    public void appendHoverText(ItemStack stack, Level level, List<Component> tooltip, TooltipFlag flag) {
         if (description != null) {
             tooltip.add(description.copy().withStyle(ChatFormatting.GRAY));
         }
