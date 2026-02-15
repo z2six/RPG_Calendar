@@ -18,6 +18,9 @@ import org.z2six.rpgtimeline.platform.Services;
 public final class RPGTimelineApi {
 
     private static final Logger LOG = LogUtils.getLogger();
+    private static final String DATE_FORMAT_KEY = "api.rpgtimeline.date.format";
+    private static final String DATE_OF_KEY = "api.rpgtimeline.date.of";
+    private static final String DATE_FALLBACK_KEY = "api.rpgtimeline.date.fallback";
 
     private RPGTimelineApi() {
         // no-op
@@ -109,11 +112,18 @@ public final class RPGTimelineApi {
             String monthName = def.getMonthName(monthIndex);
             String suffix = def.getYearSuffix();
 
-            String text = "Day " + dayOfMonth + " of " + monthName + ", " + yearNumber + " " + suffix;
-            return Component.literal(text);
+            return Component.translatable(
+                    DATE_FORMAT_KEY,
+                    Component.translatable("gui.rpgtimeline.label.day"),
+                    dayOfMonth,
+                    Component.translatable(DATE_OF_KEY),
+                    monthName,
+                    yearNumber,
+                    suffix
+            );
         } catch (Throwable t) {
             LOG.error("[RPGTimelineApi] buildDateMessage failed, using fallback text", t);
-            return Component.literal("A New Day Dawns");
+            return Component.translatable(DATE_FALLBACK_KEY);
         }
     }
 
