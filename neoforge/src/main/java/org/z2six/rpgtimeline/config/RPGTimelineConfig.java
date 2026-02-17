@@ -53,6 +53,9 @@ public final class RPGTimelineConfig {
      * Default for whether the custom calendar font is used on clients.
      */
     public static final boolean DEFAULT_USE_CUSTOM_FONT = true;
+    public static final boolean DEFAULT_RETROACTIVE_ADV_IMPORT_ENABLED = true;
+    public static final boolean DEFAULT_RETROACTIVE_ADV_IMPORT_INCLUDE_RECIPES = false;
+    public static final boolean DEFAULT_RETROACTIVE_ADV_IMPORT_MAP_BY_REAL_DAYS = true;
 
     public static final List<String> DEFAULT_MONTH_ABBREVIATIONS = List.of();
     public static final boolean DEFAULT_USE_SERENE_SEASONS = true;
@@ -104,6 +107,9 @@ public final class RPGTimelineConfig {
     public static final ModConfigSpec.BooleanValue USE_CUSTOM_FONT;
     public static final ModConfigSpec.BooleanValue USE_SERENE_SEASONS;
     public static final ModConfigSpec.ConfigValue<List<? extends String>> SEASON_MONTHS;
+    public static final ModConfigSpec.BooleanValue RETROACTIVE_ADVANCEMENT_IMPORT_ENABLED;
+    public static final ModConfigSpec.BooleanValue RETROACTIVE_ADVANCEMENT_IMPORT_INCLUDE_RECIPES;
+    public static final ModConfigSpec.BooleanValue RETROACTIVE_ADVANCEMENT_IMPORT_MAP_BY_REAL_DAYS;
     public static final ModConfigSpec.ConfigValue<String> CUSTOM_GOALS;
     public static final ModConfigSpec.ConfigValue<String> EVENT_TIMEFRAMES;
 
@@ -214,6 +220,29 @@ public final class RPGTimelineConfig {
         // chronicle
         // -----------------------
         builder.push("chronicle");
+
+        RETROACTIVE_ADVANCEMENT_IMPORT_ENABLED = builder
+                .comment(
+                        "If true, Timeline scans world/advancements/*.json once at server startup and imports",
+                        "completed displayable advancements that were earned before the mod was installed.",
+                        "Import is idempotent: already-present actor+advancement pairs are skipped."
+                )
+                .define("retroactiveAdvancementImportEnabled", DEFAULT_RETROACTIVE_ADV_IMPORT_ENABLED);
+
+        RETROACTIVE_ADVANCEMENT_IMPORT_INCLUDE_RECIPES = builder
+                .comment(
+                        "If true, includes recipe advancement ids (namespace:recipes/*) in retroactive import.",
+                        "Recommended: keep false to avoid recipe-book noise."
+                )
+                .define("retroactiveAdvancementImportIncludeRecipes", DEFAULT_RETROACTIVE_ADV_IMPORT_INCLUDE_RECIPES);
+
+        RETROACTIVE_ADVANCEMENT_IMPORT_MAP_BY_REAL_DAYS = builder
+                .comment(
+                        "If true, imported entries map wall-clock completion dates to timeline dayIndex",
+                        "relative to today (one real day offset equals one timeline day offset).",
+                        "If false, imported entries use the current timeline day."
+                )
+                .define("retroactiveAdvancementImportMapByRealDays", DEFAULT_RETROACTIVE_ADV_IMPORT_MAP_BY_REAL_DAYS);
 
         CUSTOM_GOALS = builder
                 .comment(
@@ -361,6 +390,33 @@ public final class RPGTimelineConfig {
         } catch (Throwable t) {
             LOG.error("[RPGTimelineConfig] getUseSereneSeasons failed, using default {}", DEFAULT_USE_SERENE_SEASONS, t);
             return DEFAULT_USE_SERENE_SEASONS;
+        }
+    }
+
+    public static boolean isRetroactiveAdvancementImportEnabled() {
+        try {
+            return RETROACTIVE_ADVANCEMENT_IMPORT_ENABLED.get();
+        } catch (Throwable t) {
+            LOG.error("[RPGTimelineConfig] isRetroactiveAdvancementImportEnabled failed, using default {}", DEFAULT_RETROACTIVE_ADV_IMPORT_ENABLED, t);
+            return DEFAULT_RETROACTIVE_ADV_IMPORT_ENABLED;
+        }
+    }
+
+    public static boolean isRetroactiveAdvancementImportIncludeRecipes() {
+        try {
+            return RETROACTIVE_ADVANCEMENT_IMPORT_INCLUDE_RECIPES.get();
+        } catch (Throwable t) {
+            LOG.error("[RPGTimelineConfig] isRetroactiveAdvancementImportIncludeRecipes failed, using default {}", DEFAULT_RETROACTIVE_ADV_IMPORT_INCLUDE_RECIPES, t);
+            return DEFAULT_RETROACTIVE_ADV_IMPORT_INCLUDE_RECIPES;
+        }
+    }
+
+    public static boolean isRetroactiveAdvancementImportMapByRealDays() {
+        try {
+            return RETROACTIVE_ADVANCEMENT_IMPORT_MAP_BY_REAL_DAYS.get();
+        } catch (Throwable t) {
+            LOG.error("[RPGTimelineConfig] isRetroactiveAdvancementImportMapByRealDays failed, using default {}", DEFAULT_RETROACTIVE_ADV_IMPORT_MAP_BY_REAL_DAYS, t);
+            return DEFAULT_RETROACTIVE_ADV_IMPORT_MAP_BY_REAL_DAYS;
         }
     }
 

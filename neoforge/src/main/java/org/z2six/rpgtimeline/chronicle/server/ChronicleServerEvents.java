@@ -9,6 +9,7 @@ import net.neoforged.neoforge.event.entity.player.AdvancementEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.entity.player.ItemEntityPickupEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import org.slf4j.Logger;
 
 /**
@@ -35,6 +36,7 @@ public final class ChronicleServerEvents {
             NeoForge.EVENT_BUS.addListener(ChronicleServerEvents::onItemPickedUp);
             NeoForge.EVENT_BUS.addListener(ChronicleServerEvents::onItemCrafted);
             NeoForge.EVENT_BUS.addListener(ChronicleServerEvents::onItemSmelted);
+            NeoForge.EVENT_BUS.addListener(ChronicleServerEvents::onServerStarted);
             REGISTERED = true;
             LOG.debug("[ChronicleServerEvents] Registered on NeoForge EVENT_BUS");
         } catch (Throwable t) {
@@ -134,6 +136,17 @@ public final class ChronicleServerEvents {
             ChronicleGoalService.handleItemGain(sp, event.getSmelting());
         } catch (Throwable t) {
             LOG.error("[ChronicleServerEvents] onItemSmelted failed safely", t);
+        }
+    }
+
+    private static void onServerStarted(ServerStartedEvent event) {
+        try {
+            if (event == null || event.getServer() == null) {
+                return;
+            }
+            ChronicleRetroactiveAdvancementImporter.runAutoImport(event.getServer());
+        } catch (Throwable t) {
+            LOG.error("[ChronicleServerEvents] onServerStarted failed safely", t);
         }
     }
 }

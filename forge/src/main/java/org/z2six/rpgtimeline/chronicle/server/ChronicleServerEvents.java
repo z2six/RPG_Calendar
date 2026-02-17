@@ -9,6 +9,7 @@ import net.minecraftforge.event.entity.player.AdvancementEvent;
 import net.minecraftforge.event.entity.player.EntityItemPickupEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.level.BlockEvent;
+import net.minecraftforge.event.server.ServerStartedEvent;
 import org.slf4j.Logger;
 
 /**
@@ -35,6 +36,7 @@ public final class ChronicleServerEvents {
             MinecraftForge.EVENT_BUS.addListener(ChronicleServerEvents::onItemPickedUp);
             MinecraftForge.EVENT_BUS.addListener(ChronicleServerEvents::onItemCrafted);
             MinecraftForge.EVENT_BUS.addListener(ChronicleServerEvents::onItemSmelted);
+            MinecraftForge.EVENT_BUS.addListener(ChronicleServerEvents::onServerStarted);
             REGISTERED = true;
             LOG.debug("[ChronicleServerEvents] Registered on Forge EVENT_BUS");
         } catch (Throwable t) {
@@ -129,6 +131,17 @@ public final class ChronicleServerEvents {
             ChronicleGoalService.handleItemGain(sp, event.getSmelting());
         } catch (Throwable t) {
             LOG.error("[ChronicleServerEvents] onItemSmelted failed safely", t);
+        }
+    }
+
+    private static void onServerStarted(ServerStartedEvent event) {
+        try {
+            if (event == null || event.getServer() == null) {
+                return;
+            }
+            ChronicleRetroactiveAdvancementImporter.runAutoImport(event.getServer());
+        } catch (Throwable t) {
+            LOG.error("[ChronicleServerEvents] onServerStarted failed safely", t);
         }
     }
 }
