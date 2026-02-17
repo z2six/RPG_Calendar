@@ -56,6 +56,10 @@ public final class RPGTimelineConfig {
     public static final boolean DEFAULT_RETROACTIVE_ADV_IMPORT_ENABLED = true;
     public static final boolean DEFAULT_RETROACTIVE_ADV_IMPORT_INCLUDE_RECIPES = false;
     public static final boolean DEFAULT_RETROACTIVE_ADV_IMPORT_MAP_BY_REAL_DAYS = true;
+    public static final int DEFAULT_ADV_ANNOUNCEMENT_PLAYER_MAX_COUNT = 0;
+    public static final int DEFAULT_ADV_ANNOUNCEMENT_PLAYER_WINDOW_TICKS = 200;
+    public static final int DEFAULT_ADV_ANNOUNCEMENT_GLOBAL_MAX_COUNT = 0;
+    public static final int DEFAULT_ADV_ANNOUNCEMENT_GLOBAL_WINDOW_TICKS = 200;
 
     public static final List<String> DEFAULT_MONTH_ABBREVIATIONS = List.of();
     public static final boolean DEFAULT_USE_SERENE_SEASONS = true;
@@ -110,6 +114,10 @@ public final class RPGTimelineConfig {
     public static final ForgeConfigSpec.BooleanValue RETROACTIVE_ADVANCEMENT_IMPORT_ENABLED;
     public static final ForgeConfigSpec.BooleanValue RETROACTIVE_ADVANCEMENT_IMPORT_INCLUDE_RECIPES;
     public static final ForgeConfigSpec.BooleanValue RETROACTIVE_ADVANCEMENT_IMPORT_MAP_BY_REAL_DAYS;
+    public static final ForgeConfigSpec.IntValue ADVANCEMENT_ANNOUNCEMENT_PLAYER_MAX_COUNT;
+    public static final ForgeConfigSpec.IntValue ADVANCEMENT_ANNOUNCEMENT_PLAYER_WINDOW_TICKS;
+    public static final ForgeConfigSpec.IntValue ADVANCEMENT_ANNOUNCEMENT_GLOBAL_MAX_COUNT;
+    public static final ForgeConfigSpec.IntValue ADVANCEMENT_ANNOUNCEMENT_GLOBAL_WINDOW_TICKS;
     public static final ForgeConfigSpec.ConfigValue<String> CUSTOM_GOALS;
     public static final ForgeConfigSpec.ConfigValue<String> EVENT_TIMEFRAMES;
 
@@ -223,8 +231,8 @@ public final class RPGTimelineConfig {
 
         RETROACTIVE_ADVANCEMENT_IMPORT_ENABLED = builder
                 .comment(
-                        "If true, Timeline scans world/advancements/*.json once at server startup and imports",
-                        "completed displayable advancements that were earned before the mod was installed.",
+                        "If true, allows running retroactive advancement import via command:",
+                        "/rpgtimeline retroimport advancements",
                         "Import is idempotent: already-present actor+advancement pairs are skipped."
                 )
                 .define("retroactiveAdvancementImportEnabled", DEFAULT_RETROACTIVE_ADV_IMPORT_ENABLED);
@@ -238,11 +246,40 @@ public final class RPGTimelineConfig {
 
         RETROACTIVE_ADVANCEMENT_IMPORT_MAP_BY_REAL_DAYS = builder
                 .comment(
-                        "If true, imported entries map wall-clock completion dates to timeline dayIndex",
-                        "relative to today (one real day offset equals one timeline day offset).",
+                        "If true, imported entries map wall-clock completion times to timeline dayIndex",
+                        "using world real-time age: worldStart..serverNow is scaled to 0..currentDayIndex,",
+                        "then each advancement timestamp is projected into that day range.",
                         "If false, imported entries use the current timeline day."
                 )
                 .define("retroactiveAdvancementImportMapByRealDays", DEFAULT_RETROACTIVE_ADV_IMPORT_MAP_BY_REAL_DAYS);
+
+        ADVANCEMENT_ANNOUNCEMENT_PLAYER_MAX_COUNT = builder
+                .comment(
+                        "Maximum world-first advancement chat announcements allowed per player within the player window.",
+                        "Set to 0 to disable per-player rate limiting."
+                )
+                .defineInRange("advancementAnnouncementPlayerMaxCount", DEFAULT_ADV_ANNOUNCEMENT_PLAYER_MAX_COUNT, 0, 1000);
+
+        ADVANCEMENT_ANNOUNCEMENT_PLAYER_WINDOW_TICKS = builder
+                .comment(
+                        "Tick window for per-player world-first advancement announcement rate limiting.",
+                        "Example: 200 ticks = 10 seconds."
+                )
+                .defineInRange("advancementAnnouncementPlayerWindowTicks", DEFAULT_ADV_ANNOUNCEMENT_PLAYER_WINDOW_TICKS, 1, 72000);
+
+        ADVANCEMENT_ANNOUNCEMENT_GLOBAL_MAX_COUNT = builder
+                .comment(
+                        "Maximum world-first advancement chat announcements allowed globally within the global window.",
+                        "Set to 0 to disable global rate limiting."
+                )
+                .defineInRange("advancementAnnouncementGlobalMaxCount", DEFAULT_ADV_ANNOUNCEMENT_GLOBAL_MAX_COUNT, 0, 10000);
+
+        ADVANCEMENT_ANNOUNCEMENT_GLOBAL_WINDOW_TICKS = builder
+                .comment(
+                        "Tick window for global world-first advancement announcement rate limiting.",
+                        "Example: 200 ticks = 10 seconds."
+                )
+                .defineInRange("advancementAnnouncementGlobalWindowTicks", DEFAULT_ADV_ANNOUNCEMENT_GLOBAL_WINDOW_TICKS, 1, 72000);
 
         CUSTOM_GOALS = builder
                 .comment(
@@ -416,6 +453,46 @@ public final class RPGTimelineConfig {
         } catch (Throwable t) {
             LOG.error("[RPGTimelineConfig] isRetroactiveAdvancementImportMapByRealDays failed, using default {}", DEFAULT_RETROACTIVE_ADV_IMPORT_MAP_BY_REAL_DAYS, t);
             return DEFAULT_RETROACTIVE_ADV_IMPORT_MAP_BY_REAL_DAYS;
+        }
+    }
+
+    public static int getAdvancementAnnouncementPlayerMaxCount() {
+        try {
+            int value = ADVANCEMENT_ANNOUNCEMENT_PLAYER_MAX_COUNT.get();
+            return Math.max(0, value);
+        } catch (Throwable t) {
+            LOG.error("[RPGTimelineConfig] getAdvancementAnnouncementPlayerMaxCount failed, using default {}", DEFAULT_ADV_ANNOUNCEMENT_PLAYER_MAX_COUNT, t);
+            return DEFAULT_ADV_ANNOUNCEMENT_PLAYER_MAX_COUNT;
+        }
+    }
+
+    public static int getAdvancementAnnouncementPlayerWindowTicks() {
+        try {
+            int value = ADVANCEMENT_ANNOUNCEMENT_PLAYER_WINDOW_TICKS.get();
+            return Math.max(1, value);
+        } catch (Throwable t) {
+            LOG.error("[RPGTimelineConfig] getAdvancementAnnouncementPlayerWindowTicks failed, using default {}", DEFAULT_ADV_ANNOUNCEMENT_PLAYER_WINDOW_TICKS, t);
+            return DEFAULT_ADV_ANNOUNCEMENT_PLAYER_WINDOW_TICKS;
+        }
+    }
+
+    public static int getAdvancementAnnouncementGlobalMaxCount() {
+        try {
+            int value = ADVANCEMENT_ANNOUNCEMENT_GLOBAL_MAX_COUNT.get();
+            return Math.max(0, value);
+        } catch (Throwable t) {
+            LOG.error("[RPGTimelineConfig] getAdvancementAnnouncementGlobalMaxCount failed, using default {}", DEFAULT_ADV_ANNOUNCEMENT_GLOBAL_MAX_COUNT, t);
+            return DEFAULT_ADV_ANNOUNCEMENT_GLOBAL_MAX_COUNT;
+        }
+    }
+
+    public static int getAdvancementAnnouncementGlobalWindowTicks() {
+        try {
+            int value = ADVANCEMENT_ANNOUNCEMENT_GLOBAL_WINDOW_TICKS.get();
+            return Math.max(1, value);
+        } catch (Throwable t) {
+            LOG.error("[RPGTimelineConfig] getAdvancementAnnouncementGlobalWindowTicks failed, using default {}", DEFAULT_ADV_ANNOUNCEMENT_GLOBAL_WINDOW_TICKS, t);
+            return DEFAULT_ADV_ANNOUNCEMENT_GLOBAL_WINDOW_TICKS;
         }
     }
 

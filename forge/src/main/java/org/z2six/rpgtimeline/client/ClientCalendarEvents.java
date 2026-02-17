@@ -148,9 +148,11 @@ public final class ClientCalendarEvents {
             int screenWidth = mc.getWindow().getGuiScaledWidth();
             int textWidth = font.width(styled);
             int textHeight = font.lineHeight;
+            int offsetX = RPGTimelineClientConfig.getDayToastOffsetX();
+            int offsetY = RPGTimelineClientConfig.getDayToastOffsetY();
 
-            int x = (screenWidth - textWidth) / 2;
-            int y = 24; // near top, but below boss bar / title
+            int x = ((screenWidth - textWidth) / 2) + offsetX;
+            int y = 24 + offsetY; // near top, but below boss bar / title
 
             // Color: white with computed alpha
             int argb = (alpha << 24) | 0x00FFFFFF;
