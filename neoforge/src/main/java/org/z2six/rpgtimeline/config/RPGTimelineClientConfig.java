@@ -9,6 +9,8 @@ import org.slf4j.Logger;
 public final class RPGTimelineClientConfig {
 
     private static final Logger LOG = LogUtils.getLogger();
+    private static final int DEFAULT_DAY_TOAST_OFFSET_X = 0;
+    private static final int DEFAULT_DAY_TOAST_OFFSET_Y = 0;
 
     public enum DayToastFont {
         VANILLA,
@@ -18,6 +20,8 @@ public final class RPGTimelineClientConfig {
 
     public static final ModConfigSpec CLIENT_SPEC;
     public static final ModConfigSpec.EnumValue<DayToastFont> DAY_TOAST_FONT;
+    public static final ModConfigSpec.IntValue DAY_TOAST_OFFSET_X;
+    public static final ModConfigSpec.IntValue DAY_TOAST_OFFSET_Y;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -31,6 +35,20 @@ public final class RPGTimelineClientConfig {
                         "GOTHIC12 and GOTHIC24 use RPG Calendar's Gothic fonts."
                 )
                 .defineEnum("dayToastFont", DayToastFont.GOTHIC12);
+
+        DAY_TOAST_OFFSET_X = builder
+                .comment(
+                        "Horizontal offset in pixels for the day-change toast.",
+                        "Positive moves right, negative moves left."
+                )
+                .defineInRange("dayToastOffsetX", DEFAULT_DAY_TOAST_OFFSET_X, -4096, 4096);
+
+        DAY_TOAST_OFFSET_Y = builder
+                .comment(
+                        "Vertical offset in pixels for the day-change toast.",
+                        "Positive moves down, negative moves up."
+                )
+                .defineInRange("dayToastOffsetY", DEFAULT_DAY_TOAST_OFFSET_Y, -4096, 4096);
 
         builder.pop();
 
@@ -56,6 +74,24 @@ public final class RPGTimelineClientConfig {
         } catch (Throwable t) {
             LOG.error("[RPGTimelineClientConfig] getDayToastFont failed; using VANILLA", t);
             return DayToastFont.VANILLA;
+        }
+    }
+
+    public static int getDayToastOffsetX() {
+        try {
+            return DAY_TOAST_OFFSET_X.get();
+        } catch (Throwable t) {
+            LOG.error("[RPGTimelineClientConfig] getDayToastOffsetX failed; using {}", DEFAULT_DAY_TOAST_OFFSET_X, t);
+            return DEFAULT_DAY_TOAST_OFFSET_X;
+        }
+    }
+
+    public static int getDayToastOffsetY() {
+        try {
+            return DAY_TOAST_OFFSET_Y.get();
+        } catch (Throwable t) {
+            LOG.error("[RPGTimelineClientConfig] getDayToastOffsetY failed; using {}", DEFAULT_DAY_TOAST_OFFSET_Y, t);
+            return DEFAULT_DAY_TOAST_OFFSET_Y;
         }
     }
 

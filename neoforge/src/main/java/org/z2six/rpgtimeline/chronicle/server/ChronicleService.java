@@ -17,8 +17,10 @@ import org.z2six.rpgtimeline.chronicle.ChronicleEntry;
 import org.z2six.rpgtimeline.chronicle.ChronicleEntryType;
 import org.z2six.rpgtimeline.chronicle.ChronicleScope;
 import org.z2six.rpgtimeline.chronicle.HallOfFameEntry;
+import org.z2six.rpgtimeline.config.RPGTimelineConfig;
 import org.z2six.rpgtimeline.network.ChroniclePayloads;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -33,6 +35,7 @@ public final class ChronicleService {
 
     private static final Logger LOG = LogUtils.getLogger();
     private static final int MAX_DETAILS_PER_ENTRY = 50;
+    private static final AnnouncementRateLimiter ANNOUNCEMENT_RATE_LIMITER = new AnnouncementRateLimiter();
 
     private ChronicleService() {
         // no-op
@@ -83,7 +86,7 @@ public final class ChronicleService {
 
             ChroniclePayloads.broadcastFullSync(player.getServer());
             if (worldFirst) {
-                announceWorldFirst(player.getServer(), actorName, titleComponent);
+                announceWorldFirst(player.getServer(), actorName, actorUuid, titleComponent);
                 ChroniclePayloads.broadcastHallOfFame(player.getServer());
             }
 
@@ -137,7 +140,7 @@ public final class ChronicleService {
             ChroniclePayloads.broadcastFullSync(player.getServer());
 
             if (worldFirst) {
-                announceWorldFirst(player.getServer(), actorName, titleComponent);
+                announceWorldFirst(player.getServer(), actorName, actorUuid, titleComponent);
                 ChroniclePayloads.broadcastHallOfFame(player.getServer());
             }
 
@@ -178,7 +181,7 @@ public final class ChronicleService {
             ChroniclePayloads.broadcastFullSync(player.getServer());
 
             if (worldFirst) {
-                announceWorldFirst(player.getServer(), actorName, Component.literal(title));
+                announceWorldFirst(player.getServer(), actorName, actorUuid, Component.literal(title));
                 ChroniclePayloads.broadcastHallOfFame(player.getServer());
             }
         } catch (Throwable t) {
@@ -451,8 +454,12 @@ public final class ChronicleService {
         return true;
     }
 
-    private static void announceWorldFirst(MinecraftServer server, String actorName, Component title) {
+    private static void announceWorldFirst(MinecraftServer server, String actorName, String actorUuid, Component title) {
         if (server == null) {
+            return;
+        }
+        if (!ANNOUNCEMENT_RATE_LIMITER.allow(server, actorUuid)) {
+            LOG.debug("[ChronicleService] Suppressed world-first chat announcement by rate limit (actorUuid={})", actorUuid);
             return;
         }
         String who = actorName == null || actorName.isBlank()
@@ -474,5 +481,84 @@ public final class ChronicleService {
 
     private static String safe(String s) {
         return s == null ? "" : s;
+    }
+
+    private static final class AnnouncementRateLimiter {
+        private final Map<String, ArrayDeque<Long>> perActorAnnouncementTicks = new HashMap<>();
+        private final ArrayDeque<Long> globalAnnouncementTicks = new ArrayDeque<>();
+
+        private synchronized boolean allow(MinecraftServer server, String actorUuid) {
+            int perPlayerMax = RPGTimelineConfig.getAdvancementAnnouncementPlayerMaxCount();
+            int perPlayerWindow = RPGTimelineConfig.getAdvancementAnnouncementPlayerWindowTicks();
+            int globalMax = RPGTimelineConfig.getAdvancementAnnouncementGlobalMaxCount();
+            int globalWindow = RPGTimelineConfig.getAdvancementAnnouncementGlobalWindowTicks();
+
+            if (perPlayerMax <= 0 && globalMax <= 0) {
+                return true;
+            }
+
+            long nowTick = getServerTick(server);
+            if (globalMax > 0) {
+                prune(globalAnnouncementTicks, nowTick, globalWindow);
+                if (globalAnnouncementTicks.size() >= globalMax) {
+                    return false;
+                }
+            }
+
+            String actorKey = actorUuid == null ? "" : actorUuid.trim();
+            ArrayDeque<Long> actorTicks = null;
+            if (perPlayerMax > 0 && !actorKey.isEmpty()) {
+                actorTicks = perActorAnnouncementTicks.computeIfAbsent(actorKey, ignored -> new ArrayDeque<>());
+                prune(actorTicks, nowTick, perPlayerWindow);
+                if (actorTicks.size() >= perPlayerMax) {
+                    if (actorTicks.isEmpty()) {
+                        perActorAnnouncementTicks.remove(actorKey);
+                    }
+                    return false;
+                }
+            }
+
+            if (globalMax > 0) {
+                globalAnnouncementTicks.addLast(nowTick);
+            }
+            if (actorTicks != null) {
+                actorTicks.addLast(nowTick);
+            }
+            cleanupStaleActors(nowTick, perPlayerWindow);
+            return true;
+        }
+
+        private static void prune(ArrayDeque<Long> queue, long nowTick, int windowTicks) {
+            while (!queue.isEmpty()) {
+                long tick = queue.peekFirst();
+                if (nowTick - tick >= windowTicks) {
+                    queue.removeFirst();
+                } else {
+                    break;
+                }
+            }
+        }
+
+        private void cleanupStaleActors(long nowTick, int windowTicks) {
+            if (perActorAnnouncementTicks.isEmpty()) {
+                return;
+            }
+            java.util.Iterator<Map.Entry<String, ArrayDeque<Long>>> it = perActorAnnouncementTicks.entrySet().iterator();
+            while (it.hasNext()) {
+                Map.Entry<String, ArrayDeque<Long>> entry = it.next();
+                ArrayDeque<Long> ticks = entry.getValue();
+                prune(ticks, nowTick, windowTicks);
+                if (ticks.isEmpty()) {
+                    it.remove();
+                }
+            }
+        }
+
+        private static long getServerTick(MinecraftServer server) {
+            if (server == null || server.overworld() == null) {
+                return 0L;
+            }
+            return server.overworld().getGameTime();
+        }
     }
 }

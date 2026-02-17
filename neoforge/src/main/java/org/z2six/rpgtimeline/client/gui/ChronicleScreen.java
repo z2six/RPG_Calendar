@@ -85,6 +85,8 @@ public class ChronicleScreen extends Screen {
     private static final int TIMEFRAME_RENDER_ENTITY = 2;
     private static final int TIMEFRAME_LAYER_BASE = 0;
     private static final int TIMEFRAME_LAYER_ENTITY = 2;
+    private static final float MAX_ANIMATION_STEP_SECONDS = 0.050f;
+    private static final float ANIMATION_TIME_WRAP_SECONDS = 2048.0f;
     private static final int SEASON_PARTICLE_MIN = 6;
     private static final int SEASON_PARTICLE_MAX = 32;
     private static final int SEASON_PARTICLE_AREA = 14000;
@@ -214,6 +216,9 @@ public class ChronicleScreen extends Screen {
     private boolean draggingDetailScroll = false;
     private int detailDragOffset = 0;
     private int syncTicker = 0;
+    private long lastAnimationNanoTime = -1L;
+    private float animationTimeSeconds = 0.0f;
+    private float frameAnimationTimeSeconds = 0.0f;
     private boolean showAddButton = false;
     private boolean showInfoButton = false;
     private boolean hoverAddButton = false;
@@ -565,6 +570,7 @@ public class ChronicleScreen extends Screen {
 
     @Override
     public void render(@NotNull GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        updateFrameAnimationClock();
         updateLayout();
         layoutTopButtons();
         renderBackground(g, mouseX, mouseY, partialTick);
@@ -635,6 +641,33 @@ public class ChronicleScreen extends Screen {
     @Override
     public void renderBackground(@NotNull GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         // Intentionally skip vanilla blur/menu background; custom UI draws its own background.
+    }
+
+    private void updateFrameAnimationClock() {
+        long now = Util.getNanos();
+        if (lastAnimationNanoTime <= 0L) {
+            lastAnimationNanoTime = now;
+            frameAnimationTimeSeconds = animationTimeSeconds;
+            return;
+        }
+
+        long deltaNanos = now - lastAnimationNanoTime;
+        lastAnimationNanoTime = now;
+        if (deltaNanos < 0L) {
+            deltaNanos = 0L;
+        }
+
+        float deltaSeconds = deltaNanos / 1_000_000_000.0f;
+        if (!Float.isFinite(deltaSeconds)) {
+            deltaSeconds = 0.0f;
+        }
+        deltaSeconds = clamp(deltaSeconds, 0.0f, MAX_ANIMATION_STEP_SECONDS);
+
+        animationTimeSeconds += deltaSeconds;
+        if (!Float.isFinite(animationTimeSeconds) || animationTimeSeconds >= ANIMATION_TIME_WRAP_SECONDS) {
+            animationTimeSeconds = animationTimeSeconds % ANIMATION_TIME_WRAP_SECONDS;
+        }
+        frameAnimationTimeSeconds = animationTimeSeconds;
     }
 
     private void updateLayout() {
@@ -1543,7 +1576,7 @@ public class ChronicleScreen extends Screen {
         float seasonDays = seasonDuration / (float) Math.max(1L, ticksPerDay);
         int count = Math.max(SEASON_PARTICLE_MIN, Math.min(SEASON_PARTICLE_MAX, Math.round(seasonDays * 0.7f)));
         long seedBase = (seasonStartTick * 31L) ^ ((long) seasonIndex << 48) ^ (long) seasonDuration;
-        float time = (float) (Util.getMillis() / 1000.0);
+        float time = frameAnimationTimeSeconds;
 
         for (int i = 0; i < count; i++) {
             RandomSource random = RandomSource.create(seedBase + (long) i * 1315423911L);
@@ -1754,7 +1787,7 @@ public class ChronicleScreen extends Screen {
         if (width <= 0) {
             return;
         }
-        float time = (float) (Util.getMillis() / 1000.0);
+        float time = frameAnimationTimeSeconds;
         float sunX = (x0 + x1) * 0.5f;
         float sunY = y - h * 0.45f;
         int rays = 16;
@@ -1931,8 +1964,7 @@ public class ChronicleScreen extends Screen {
         }
         scale = scale / Math.max(0.01f, entity.getScale());
         Vector3f translate = new Vector3f(0.0f, entity.getBbHeight() / 2.0f, 0.0f);
-        long now = Util.getMillis();
-        float angle = (float) ((now % 20000L) / 20000.0f) * ((float) Math.PI * 2.0f);
+        float angle = ((frameAnimationTimeSeconds % 20.0f) / 20.0f) * ((float) Math.PI * 2.0f);
         Quaternionf pose = new Quaternionf()
                 .rotateZ((float) Math.PI)
                 .rotateY(angle);

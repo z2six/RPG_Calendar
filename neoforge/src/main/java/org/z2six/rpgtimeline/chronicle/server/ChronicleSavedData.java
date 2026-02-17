@@ -41,6 +41,49 @@ public final class ChronicleSavedData extends SavedData {
         setDirty();
     }
 
+    public boolean updateAdvancementDayIndex(String actorUuid, String sourceId, long newDayIndex) {
+        if (actorUuid == null || actorUuid.isBlank() || sourceId == null || sourceId.isBlank()) {
+            return false;
+        }
+        long clampedNew = Math.max(0L, newDayIndex);
+
+        boolean updated = false;
+        for (int i = 0; i < events.size(); i++) {
+            ChronicleEvent event = events.get(i);
+            if (event.type() != ChronicleEntryType.ADVANCEMENT) {
+                continue;
+            }
+            if (!actorUuid.equals(event.actorUuid())) {
+                continue;
+            }
+            if (!sourceId.equals(event.sourceId())) {
+                continue;
+            }
+            if (event.dayIndex() == clampedNew) {
+                continue;
+            }
+
+            events.set(i, new ChronicleEvent(
+                    event.id(),
+                    event.type(),
+                    event.scope(),
+                    clampedNew,
+                    event.title(),
+                    event.details(),
+                    event.actorName(),
+                    event.actorUuid(),
+                    event.sourceId(),
+                    event.iconItemId()
+            ));
+            updated = true;
+        }
+
+        if (updated) {
+            setDirty();
+        }
+        return updated;
+    }
+
     public int getGoalProgress(String goalId, String playerUuid) {
         if (goalId == null || playerUuid == null) {
             return 0;

@@ -76,6 +76,13 @@ public class RPGTimeline {
         }
 
         try {
+            org.z2six.rpgtimeline.chronicle.server.ChronicleRetroImportCommands.registerGameBus();
+            Constants.LOG.debug("[RPGTimeline] Registered ChronicleRetroImportCommands");
+        } catch (Throwable t) {
+            Constants.LOG.error("[RPGTimeline] ChronicleRetroImportCommands.registerGameBus() failed", t);
+        }
+
+        try {
             RPGTimelineServerSyncEvents.registerGameBus();
             Constants.LOG.debug("[RPGTimeline] Registered RPGTimelineServerSyncEvents");
         } catch (Throwable t) {
