@@ -85,6 +85,13 @@ public class RPGTimeline {
         }
 
         try {
+            org.z2six.rpgtimeline.server.RPGTimelineCalendarCommands.registerGameBus();
+            Constants.LOG.debug("[RPGTimeline] Registered RPGTimelineCalendarCommands");
+        } catch (Throwable t) {
+            Constants.LOG.error("[RPGTimeline] RPGTimelineCalendarCommands.registerGameBus() failed", t);
+        }
+
+        try {
             RPGTimelineServerSyncEvents.registerGameBus();
             Constants.LOG.debug("[RPGTimeline] Registered RPGTimelineServerSyncEvents");
         } catch (Throwable t) {

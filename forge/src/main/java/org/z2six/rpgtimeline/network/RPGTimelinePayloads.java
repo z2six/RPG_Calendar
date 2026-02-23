@@ -28,7 +28,7 @@ public final class RPGTimelinePayloads {
     /**
      * Bump if you change payload shapes. Must match client + server.
      */
-    private static final String PROTOCOL_VERSION = "3";
+    private static final String PROTOCOL_VERSION = "4";
 
     private static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(Constants.MOD_ID, "main"),
@@ -74,6 +74,7 @@ public final class RPGTimelinePayloads {
     public static final class ClientState {
         private static volatile boolean hasSynced = false;
         private static volatile boolean useCustomFont = RPGTimelineConfig.DEFAULT_USE_CUSTOM_FONT;
+        private static volatile long calendarDayOffsetDays = 0L;
         private static volatile org.z2six.rpgtimeline.calendar.CalendarDefinition calendarDefinition = null;
         private static volatile SeasonMonthMapping seasonMonthMapping = null;
         private static volatile boolean useSereneSeasons = RPGTimelineConfig.DEFAULT_USE_SERENE_SEASONS;
@@ -88,6 +89,10 @@ public final class RPGTimelinePayloads {
 
         public static boolean useCustomFont() {
             return useCustomFont;
+        }
+
+        public static long getCalendarDayOffsetDays() {
+            return calendarDayOffsetDays;
         }
 
         public static org.z2six.rpgtimeline.calendar.CalendarDefinition getCalendarDefinition() {
@@ -114,6 +119,7 @@ public final class RPGTimelinePayloads {
                 String yearSuffix,
                 int daysPerMonth,
                 int ticksPerDay,
+                long newCalendarDayOffsetDays,
                 boolean newUseCustomFont,
                 boolean newUseSereneSeasons,
                 List<Integer> springMonths,
@@ -123,6 +129,7 @@ public final class RPGTimelinePayloads {
         ) {
             useCustomFont = newUseCustomFont;
             useSereneSeasons = newUseSereneSeasons;
+            calendarDayOffsetDays = newCalendarDayOffsetDays;
             try {
                 String[] namesArray = monthNames.toArray(new String[0]);
                 String[] abbrevArray = monthAbbreviations.toArray(new String[0]);
@@ -151,6 +158,7 @@ public final class RPGTimelinePayloads {
         public static void clear() {
             hasSynced = false;
             useCustomFont = RPGTimelineConfig.DEFAULT_USE_CUSTOM_FONT;
+            calendarDayOffsetDays = 0L;
             calendarDefinition = null;
             seasonMonthMapping = null;
             useSereneSeasons = RPGTimelineConfig.DEFAULT_USE_SERENE_SEASONS;
@@ -171,6 +179,7 @@ public final class RPGTimelinePayloads {
             String yearSuffix,
             int daysPerMonth,
             int ticksPerDay,
+            long calendarDayOffsetDays,
             boolean useCustomFont,
             boolean useSereneSeasons,
             List<Integer> springMonths,
@@ -199,6 +208,10 @@ public final class RPGTimelinePayloads {
             int ticksPerDay = RPGTimelineConfig.TICKS_PER_DAY;
             boolean useSereneSeasons = RPGTimelineConfig.getUseSereneSeasons();
             SeasonMonthMapping mapping = RPGTimelineConfig.getSeasonMonthMapping();
+            long dayOffsetDays = 0L;
+            if (level.getServer() != null) {
+                dayOffsetDays = org.z2six.rpgtimeline.server.RPGTimelineCalendarSavedData.get(level.getServer()).getDayOffsetDays();
+            }
 
             ServerCalendarSettingsPayload msg = new ServerCalendarSettingsPayload(
                     monthNames,
@@ -206,6 +219,7 @@ public final class RPGTimelinePayloads {
                     yearSuffix,
                     daysPerMonth,
                     ticksPerDay,
+                    dayOffsetDays,
                     useCustomFontValue,
                     useSereneSeasons,
                     new ArrayList<>(mapping.spring()),
@@ -254,6 +268,7 @@ public final class RPGTimelinePayloads {
         buf.writeUtf(payload.yearSuffix());
         buf.writeInt(payload.daysPerMonth());
         buf.writeInt(payload.ticksPerDay());
+        buf.writeLong(payload.calendarDayOffsetDays());
         buf.writeBoolean(payload.useCustomFont());
         buf.writeBoolean(payload.useSereneSeasons());
         writeIntList(buf, payload.springMonths());
@@ -268,6 +283,7 @@ public final class RPGTimelinePayloads {
         String yearSuffix = buf.readUtf();
         int daysPerMonth = buf.readInt();
         int ticksPerDay = buf.readInt();
+        long calendarDayOffsetDays = buf.readLong();
         boolean useCustomFont = buf.readBoolean();
         boolean useSereneSeasons = buf.readBoolean();
         List<Integer> springMonths = readIntList(buf);
@@ -280,6 +296,7 @@ public final class RPGTimelinePayloads {
                 yearSuffix,
                 daysPerMonth,
                 ticksPerDay,
+                calendarDayOffsetDays,
                 useCustomFont,
                 useSereneSeasons,
                 springMonths,
@@ -299,6 +316,7 @@ public final class RPGTimelinePayloads {
                         payload.yearSuffix(),
                         payload.daysPerMonth(),
                         payload.ticksPerDay(),
+                        payload.calendarDayOffsetDays(),
                         payload.useCustomFont(),
                         payload.useSereneSeasons(),
                         payload.springMonths(),

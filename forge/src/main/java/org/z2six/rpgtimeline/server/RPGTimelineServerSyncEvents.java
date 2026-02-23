@@ -84,6 +84,7 @@ public final class RPGTimelineServerSyncEvents {
             boolean useCustomFontNow = RPGTimelineConfig.getUseCustomFont();
             boolean useSereneSeasons = RPGTimelineConfig.getUseSereneSeasons();
             org.z2six.rpgtimeline.calendar.SeasonMonthMapping mapping = RPGTimelineConfig.getSeasonMonthMapping();
+            long calendarDayOffsetDays = RPGTimelineCalendarSavedData.get(server).getDayOffsetDays();
 
             int settingsHash = Objects.hash(
                     monthNames,
@@ -91,6 +92,7 @@ public final class RPGTimelineServerSyncEvents {
                     yearSuffix,
                     daysPerMonth,
                     ticksPerDay,
+                    calendarDayOffsetDays,
                     useCustomFontNow,
                     useSereneSeasons,
                     mapping.spring(),
