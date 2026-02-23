@@ -200,14 +200,8 @@ public final class RPGTimelineCalendarCommands {
         long sereneDay = Math.max(0L, snapshot.day());
         long sereneDayOfYear = sereneYearDays > 0 ? Math.floorMod(sereneDay, sereneYearDays) : sereneDay;
 
-        boolean scaled = sereneYearDays > 0L && sereneYearDays != timelineYearDays;
-        long desiredDayOfYear;
-        if (scaled) {
-            long scaledValue = Math.floorDiv(sereneDayOfYear * timelineYearDays, sereneYearDays);
-            desiredDayOfYear = Math.max(0L, Math.min(timelineYearDays - 1L, scaledValue));
-        } else {
-            desiredDayOfYear = Math.floorMod(sereneDayOfYear, timelineYearDays);
-        }
+        boolean wrapped = sereneYearDays > 0L && sereneYearDays != timelineYearDays;
+        long desiredDayOfYear = Math.floorMod(sereneDayOfYear, timelineYearDays);
 
         long worldDayIndex = RPGTimelineApi.getDayIndexForGameTime(overworld.getDayTime());
         RPGTimelineCalendarSavedData data = RPGTimelineCalendarSavedData.get(server);
@@ -227,8 +221,8 @@ public final class RPGTimelineCalendarCommands {
         String seasonInfo = snapshot.season().isBlank() ? "?" : snapshot.season();
         String subSeasonInfo = snapshot.subSeason().isBlank() ? "?" : snapshot.subSeason();
 
-        String extra = scaled
-                ? " (scaled: sereneYearDays=" + sereneYearDays + " timelineYearDays=" + timelineYearDays + ")"
+        String extra = wrapped
+                ? " (wrapped: sereneYearDays=" + sereneYearDays + " timelineYearDays=" + timelineYearDays + ")"
                 : "";
 
         source.sendSuccess(() -> Component.literal(
