@@ -39,10 +39,29 @@ public final class RPGTimelineApi {
     }
 
     /**
+     * Returns the server-authoritative calendar day offset (in days).
+     * This offset is applied when interpreting a world day index as a calendar date.
+     */
+    public static long getCalendarDayOffsetDays() {
+        try {
+            return Services.PLATFORM.getCalendarDayOffsetDays();
+        } catch (Throwable t) {
+            LOG.error("[RPGTimelineApi] getCalendarDayOffsetDays failed; using 0", t);
+            return 0L;
+        }
+    }
+
+    /**
      * Converts world time into a CalendarDate using the active definition.
      */
     public static @NotNull CalendarDate fromGameTime(long gameTime) {
-        return RPGTimelineMath.fromGameTime(gameTime, getCalendarDefinition());
+        CalendarDefinition def = getCalendarDefinition();
+        long ticksPerDay = def.getTicksPerDay();
+        if (ticksPerDay <= 0L) {
+            ticksPerDay = 24000L;
+        }
+        long offsetDays = getCalendarDayOffsetDays();
+        return RPGTimelineMath.fromGameTime(gameTime + offsetDays * ticksPerDay, def);
     }
 
     /**
@@ -50,7 +69,13 @@ public final class RPGTimelineApi {
      * This uses the CalendarDate year numbering (0-based year).
      */
     public static @NotNull String formatDate(long gameTime) {
-        return RPGTimelineMath.formatDate(gameTime, getCalendarDefinition());
+        CalendarDefinition def = getCalendarDefinition();
+        long ticksPerDay = def.getTicksPerDay();
+        if (ticksPerDay <= 0L) {
+            ticksPerDay = 24000L;
+        }
+        long offsetDays = getCalendarDayOffsetDays();
+        return RPGTimelineMath.formatDate(gameTime + offsetDays * ticksPerDay, def);
     }
 
     /**
@@ -72,6 +97,11 @@ public final class RPGTimelineApi {
      */
     public static @NotNull Component buildDateMessage(long dayIndex) {
         try {
+            long offsetDays = getCalendarDayOffsetDays();
+            if (offsetDays != 0L) {
+                dayIndex = dayIndex + offsetDays;
+            }
+
             CalendarDefinition def = getCalendarDefinition();
             int daysPerMonth = def.getDaysPerMonth();
             int monthsPerYear = def.getMonthCount();

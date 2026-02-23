@@ -13,6 +13,7 @@ import org.z2six.rpgtimeline.config.RPGTimelineConfig;
 import org.z2six.rpgtimeline.network.ChroniclePayloads;
 import org.z2six.rpgtimeline.network.RPGTimelinePayloads;
 import org.z2six.rpgtimeline.registry.RPGTimelineItems;
+import org.z2six.rpgtimeline.server.RPGTimelineCalendarCommands;
 import org.z2six.rpgtimeline.server.RPGTimelineServerSyncEvents;
 
 @Mod(Constants.MOD_ID)
@@ -87,6 +88,13 @@ public class RPGTimeline {
             Constants.LOG.debug("[RPGTimeline] Registered RPGTimelineServerSyncEvents");
         } catch (Throwable t) {
             Constants.LOG.error("[RPGTimeline] RPGTimelineServerSyncEvents.registerGameBus() failed", t);
+        }
+
+        try {
+            RPGTimelineCalendarCommands.registerGameBus();
+            Constants.LOG.debug("[RPGTimeline] Registered RPGTimelineCalendarCommands");
+        } catch (Throwable t) {
+            Constants.LOG.error("[RPGTimeline] RPGTimelineCalendarCommands.registerGameBus() failed", t);
         }
 
         try {

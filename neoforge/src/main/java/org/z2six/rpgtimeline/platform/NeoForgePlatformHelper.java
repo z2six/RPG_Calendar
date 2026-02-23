@@ -5,6 +5,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.fml.loading.FMLLoader;
+import net.neoforged.neoforge.server.ServerLifecycleHooks;
 import net.minecraft.advancements.AdvancementHolder;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -15,6 +16,7 @@ import org.z2six.rpgtimeline.chronicle.server.ChronicleService;
 import org.z2six.rpgtimeline.config.RPGTimelineConfig;
 import org.z2six.rpgtimeline.network.RPGTimelinePayloads;
 import org.z2six.rpgtimeline.platform.services.IPlatformHelper;
+import org.z2six.rpgtimeline.server.RPGTimelineCalendarSavedData;
 
 public class NeoForgePlatformHelper implements IPlatformHelper {
 
@@ -45,6 +47,23 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
         } catch (Throwable t) {
             LOG.error("[NeoForgePlatformHelper] getCalendarDefinition() failed", t);
             return CalendarDefinition.defaultDefinition();
+        }
+    }
+
+    @Override
+    public long getCalendarDayOffsetDays() {
+        try {
+            if (FMLEnvironment.dist == Dist.CLIENT && RPGTimelinePayloads.ClientState.hasSynced()) {
+                return RPGTimelinePayloads.ClientState.getCalendarDayOffsetDays();
+            }
+            net.minecraft.server.MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+            if (server == null) {
+                return 0L;
+            }
+            return RPGTimelineCalendarSavedData.get(server).getDayOffsetDays();
+        } catch (Throwable t) {
+            LOG.error("[NeoForgePlatformHelper] getCalendarDayOffsetDays() failed; using 0", t);
+            return 0L;
         }
     }
 

@@ -45,6 +45,17 @@ public interface IPlatformHelper {
     CalendarDefinition getCalendarDefinition();
 
     /**
+     * Returns a day offset (in whole days) applied when converting world day indices into
+     * calendar dates (month/day/year). This is intended for re-aligning the Timeline calendar
+     * with other date systems without changing Minecraft world time.
+     *
+     * <p>Server-authoritative; clients receive the value via settings sync.</p>
+     */
+    default long getCalendarDayOffsetDays() {
+        return 0L;
+    }
+
+    /**
      * Adds a chronicle note on the server.
      */
     void addChronicleNote(ServerPlayer player, ChronicleScope scope, String title, String details, long dayIndex);

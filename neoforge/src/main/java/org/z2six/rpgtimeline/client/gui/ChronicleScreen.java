@@ -33,7 +33,7 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.z2six.rpgtimeline.Constants;
 import org.z2six.rpgtimeline.client.tooltip.ChronicleItemTooltipClient;
-import org.z2six.rpgtimeline.client.compat.SereneSeasonsCompat;
+import org.z2six.rpgtimeline.compat.SereneSeasonsCompat;
 import org.z2six.rpgtimeline.api.RPGTimelineApi;
 import org.z2six.rpgtimeline.calendar.CalendarDefinition;
 import org.z2six.rpgtimeline.calendar.SeasonMonthMapping;
@@ -1466,6 +1466,7 @@ public class ChronicleScreen extends Screen {
     private void drawSeasonOverlaysFromCalendar(@NotNull GuiGraphics g, CalendarDefinition def,
                                                 float viewStartUnit, float viewUnits,
                                                 SeasonMonthMapping mapping, int frameY, int frameH, long ticksPerDay) {
+        long offsetDays = RPGTimelineApi.getCalendarDayOffsetDays();
         int daysPerMonth = def.getDaysPerMonth();
         int monthsPerYear = def.getMonthCount();
         if (daysPerMonth <= 0 || monthsPerYear <= 0) {
@@ -1476,8 +1477,10 @@ public class ChronicleScreen extends Screen {
             return;
         }
 
-        long startDay = (long) Math.floor(viewStartUnit);
-        long endDay = (long) Math.ceil(viewStartUnit + viewUnits);
+        long startDayWorld = (long) Math.floor(viewStartUnit);
+        long endDayWorld = (long) Math.ceil(viewStartUnit + viewUnits);
+        long startDay = startDayWorld + offsetDays;
+        long endDay = endDayWorld + offsetDays;
         long startYear = Math.max(0L, Math.floorDiv(startDay, daysPerYear));
         long endYear = Math.max(0L, Math.floorDiv(endDay, daysPerYear));
 
@@ -1485,19 +1488,19 @@ public class ChronicleScreen extends Screen {
 
         for (long year = startYear; year <= endYear; year++) {
             renderSeasonMonths(g, 0, mapping.spring(), year, daysPerMonth, daysPerYear, viewStartUnit, viewUnits,
-                    frameY, frameH, ticksPerDay, seasonDuration);
+                    frameY, frameH, ticksPerDay, seasonDuration, offsetDays);
             renderSeasonMonths(g, 1, mapping.summer(), year, daysPerMonth, daysPerYear, viewStartUnit, viewUnits,
-                    frameY, frameH, ticksPerDay, seasonDuration);
+                    frameY, frameH, ticksPerDay, seasonDuration, offsetDays);
             renderSeasonMonths(g, 2, mapping.autumn(), year, daysPerMonth, daysPerYear, viewStartUnit, viewUnits,
-                    frameY, frameH, ticksPerDay, seasonDuration);
+                    frameY, frameH, ticksPerDay, seasonDuration, offsetDays);
             renderSeasonMonths(g, 3, mapping.winter(), year, daysPerMonth, daysPerYear, viewStartUnit, viewUnits,
-                    frameY, frameH, ticksPerDay, seasonDuration);
+                    frameY, frameH, ticksPerDay, seasonDuration, offsetDays);
         }
     }
 
     private void renderSeasonMonths(@NotNull GuiGraphics g, int seasonIndex, List<Integer> months, long year,
                                     int daysPerMonth, long daysPerYear, float viewStartUnit, float viewUnits,
-                                    int frameY, int frameH, long ticksPerDay, int seasonDuration) {
+                                    int frameY, int frameH, long ticksPerDay, int seasonDuration, long offsetDays) {
         if (months == null || months.isEmpty()) {
             return;
         }
@@ -1521,22 +1524,24 @@ public class ChronicleScreen extends Screen {
                 rangeEnd = monthIndex;
             } else {
                 renderSeasonRange(g, seasonIndex, rangeStart, rangeEnd, year, daysPerMonth, daysPerYear,
-                        viewStartUnit, viewEnd, frameY, frameH, ticksPerDay);
+                        viewStartUnit, viewEnd, frameY, frameH, ticksPerDay, offsetDays);
                 rangeStart = monthIndex;
                 rangeEnd = monthIndex;
             }
         }
         if (rangeStart >= 0) {
             renderSeasonRange(g, seasonIndex, rangeStart, rangeEnd, year, daysPerMonth, daysPerYear,
-                    viewStartUnit, viewEnd, frameY, frameH, ticksPerDay);
+                    viewStartUnit, viewEnd, frameY, frameH, ticksPerDay, offsetDays);
         }
     }
 
     private void renderSeasonRange(@NotNull GuiGraphics g, int seasonIndex, int startMonth, int endMonth, long year,
                                    int daysPerMonth, long daysPerYear, float viewStartUnit, float viewEnd,
-                                   int frameY, int frameH, long ticksPerDay) {
-        long monthStartDay = year * daysPerYear + (long) startMonth * daysPerMonth;
-        long monthEndDay = year * daysPerYear + (long) (endMonth + 1) * daysPerMonth;
+                                   int frameY, int frameH, long ticksPerDay, long offsetDays) {
+        long monthStartCalendarDay = year * daysPerYear + (long) startMonth * daysPerMonth;
+        long monthEndCalendarDay = year * daysPerYear + (long) (endMonth + 1) * daysPerMonth;
+        long monthStartDay = monthStartCalendarDay - offsetDays;
+        long monthEndDay = monthEndCalendarDay - offsetDays;
         if (monthEndDay < viewStartUnit || monthStartDay > viewEnd) {
             return;
         }
@@ -2985,9 +2990,15 @@ public class ChronicleScreen extends Screen {
         int clampedYear = Math.max(1, year);
         long yearIndex = (long) clampedYear - 1L;
 
-        long dayIndex = yearIndex * def.getDaysPerYear()
+        long calendarDayIndex = yearIndex * def.getDaysPerYear()
                 + (long) clampedMonth * daysPerMonth
                 + (long) clampedDay - 1L;
+
+        long offsetDays = RPGTimelineApi.getCalendarDayOffsetDays();
+        long dayIndex = calendarDayIndex - offsetDays;
+        if (dayIndex < 0L) {
+            dayIndex = 0L;
+        }
 
         updateLayout();
         railLeft = panelX + 32;
@@ -3042,6 +3053,14 @@ public class ChronicleScreen extends Screen {
     }
 
     private CalendarParts getCalendarParts(long dayIndex, CalendarDefinition def) {
+        long offsetDays = RPGTimelineApi.getCalendarDayOffsetDays();
+        if (offsetDays != 0L) {
+            dayIndex = dayIndex + offsetDays;
+            if (dayIndex < 0L) {
+                dayIndex = 0L;
+            }
+        }
+
         long daysPerYear = def.getDaysPerYear();
         int daysPerMonth = def.getDaysPerMonth();
         if (daysPerYear <= 0 || daysPerMonth <= 0) {
@@ -3135,9 +3154,16 @@ public class ChronicleScreen extends Screen {
         int clampedYear = Math.max(1, year);
         long yearIndex = (long) clampedYear - 1L;
 
-        return yearIndex * def.getDaysPerYear()
+        long calendarDayIndex = yearIndex * def.getDaysPerYear()
                 + (long) clampedMonth * daysPerMonth
                 + (long) clampedDay - 1L;
+
+        long offsetDays = RPGTimelineApi.getCalendarDayOffsetDays();
+        long worldDayIndex = calendarDayIndex - offsetDays;
+        if (worldDayIndex < 0L) {
+            worldDayIndex = 0L;
+        }
+        return worldDayIndex;
     }
 
     private boolean isNumericOrEmpty(String value) {

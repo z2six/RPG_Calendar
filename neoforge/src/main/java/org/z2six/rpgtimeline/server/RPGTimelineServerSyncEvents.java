@@ -10,6 +10,7 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import org.slf4j.Logger;
 import org.z2six.rpgtimeline.config.RPGTimelineConfig;
 import org.z2six.rpgtimeline.network.RPGTimelinePayloads;
+import org.z2six.rpgtimeline.server.RPGTimelineCalendarSavedData;
 
 import java.util.List;
 import java.util.Objects;
@@ -81,6 +82,7 @@ public final class RPGTimelineServerSyncEvents {
             boolean useCustomFontNow = RPGTimelineConfig.getUseCustomFont();
             boolean useSereneSeasons = RPGTimelineConfig.getUseSereneSeasons();
             org.z2six.rpgtimeline.calendar.SeasonMonthMapping mapping = RPGTimelineConfig.getSeasonMonthMapping();
+            long calendarDayOffsetDays = RPGTimelineCalendarSavedData.get(server).getDayOffsetDays();
 
             int settingsHash = Objects.hash(
                     monthNames,
@@ -88,6 +90,7 @@ public final class RPGTimelineServerSyncEvents {
                     yearSuffix,
                     daysPerMonth,
                     ticksPerDay,
+                    calendarDayOffsetDays,
                     useCustomFontNow,
                     useSereneSeasons,
                     mapping.spring(),
