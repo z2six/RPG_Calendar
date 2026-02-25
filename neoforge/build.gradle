@@ -43,16 +43,12 @@ neoForge {
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 
-// NeoForge 1.21.x matrix profiles for Gradle panel tasks.
-// These tasks let you quickly test compilation/runtime against multiple 1.21.x lines.
-def neo121Profiles = [
-    [id: "1_21_0",  mc: "1.21",    neoforge: "21.0.167", neoform: "1.21-20240613.152323"],
-    [id: "1_21_1",  mc: "1.21.1",  neoforge: "21.1.219", neoform: "1.21.1-20240808.144430"],
-    [id: "1_21_3",  mc: "1.21.3",  neoforge: "21.3.95",  neoform: "1.21.3-20241023.131943"],
-    [id: "1_21_4",  mc: "1.21.4",  neoforge: "21.4.156", neoform: "1.21.4-20241203.161809"],
-    [id: "1_21_5",  mc: "1.21.5",  neoforge: "21.5.96",  neoform: "1.21.5-20250325.162830"],
-    [id: "1_21_8",  mc: "1.21.8",  neoforge: "21.8.52",  neoform: "1.21.8-20250717.133445"],
-    [id: "1_21_10", mc: "1.21.10", neoforge: "21.10.64", neoform: "1.21.10-20251010.172816"]
+// NeoForge 1.21.0-1.21.2 matrix tasks (minimal set for this branch).
+// Note: NeoForge has no dedicated 1.21.2 runtime line; 1.21.2 tasks use the 1.21.1 runtime line.
+def neoProfiles = [
+    [id: "1_21_0", label: "1.21.0", mc: "1.21",   neoforge: "21.0.167", neoform: "1.21-20240613.152323"],
+    [id: "1_21_1", label: "1.21.1", mc: "1.21.1", neoforge: "21.1.219", neoform: "1.21.1-20240808.144430"],
+    [id: "1_21_2", label: "1.21.2", mc: "1.21.1", neoforge: "21.1.219", neoform: "1.21.1-20240808.144430", aliasNote: "uses 1.21.1 NeoForge runtime line"]
 ]
 
 def matrixProps = { profile ->
@@ -67,67 +63,55 @@ def isWindowsOs = System.getProperty("os.name").toLowerCase().contains("windows"
 def gradleCommandPrefix = isWindowsOs ? ["cmd", "/c", "gradlew.bat"] : ["./gradlew"]
 def localGradleUserHome = new File(rootProject.projectDir, ".gradle-user-home").absolutePath
 
-def registerMatrixExecTask = { String taskName, String groupName, String descriptionText, List<String> gradleTasks, Map<String, String> props ->
+def runGradleWithProfile = { List<String> gradleTasks, Map<String, String> props ->
+    def argsList = []
+    argsList.addAll(gradleCommandPrefix)
+    argsList.addAll(gradleTasks)
+    argsList += "--no-daemon"
+    argsList += "--configure-on-demand"
+    props.each { key, value ->
+        argsList += "-P${key}=${value}"
+    }
+    project.exec {
+        workingDir rootProject.projectDir
+        environment "GRADLE_USER_HOME", localGradleUserHome
+        commandLine argsList
+    }
+}
+
+def registerProfileTask = { String taskName, String groupName, String descriptionText, List<String> gradleTasks, Map<String, String> props ->
     tasks.register(taskName) {
         group = groupName
         description = descriptionText
         doLast {
-            def argsList = []
-            argsList.addAll(gradleCommandPrefix)
-            argsList.addAll(gradleTasks)
-            argsList += "--no-daemon"
-            argsList += "--configure-on-demand"
-            props.each { key, value ->
-                argsList += "-P${key}=${value}"
-            }
-            project.exec {
-                workingDir rootProject.projectDir
-                environment "GRADLE_USER_HOME", localGradleUserHome
-                commandLine argsList
-            }
+            runGradleWithProfile(gradleTasks, props)
         }
     }
 }
 
-def matrixBuildTaskNames = []
-neo121Profiles.each { profile ->
-    def suffix = profile.id
-    registerMatrixExecTask(
-            "buildNeo_${suffix}",
-            "build",
-            "Builds NeoForge for Minecraft ${profile.mc}.",
-            [":neoforge:build"],
-            matrixProps(profile)
-    )
-    registerMatrixExecTask(
-            "runClientNeo_${suffix}",
+neoProfiles.each { profile ->
+    registerProfileTask(
+            "runClientNeo_${profile.id}",
             "mod development",
-            "Runs NeoForge client for Minecraft ${profile.mc}.",
+            "Runs NeoForge client for Minecraft ${profile.label}${profile.aliasNote ? " (${profile.aliasNote})" : ""}.",
             [":neoforge:runClient"],
             matrixProps(profile)
     )
-    matrixBuildTaskNames << "buildNeo_${suffix}"
 }
 
-tasks.register("buildNeo_all_1_21_x") {
+tasks.register("buildNeo_1_21_0_to_1_21_2") {
     group = "build"
-    description = "Builds NeoForge against all configured 1.21.x profiles."
-    dependsOn(matrixBuildTaskNames)
-}
+    description = "Compiles against NeoForge 1.21.0/1.21.1/1.21.2 and leaves a single final jar from the 1.21.0 profile."
+    doLast {
+        // Ensure only one final jar remains from the last (1.21.0) build step.
+        delete(fileTree(dir: file('build/libs')))
 
-// Explicit run aliases for Minecraft patch versions that do not have their own NeoForge runtime line.
-def runClientAliasMappings = [
-    [id: "1_21_2", target: "1_21_1", runtimeMc: "1.21.1"],
-    [id: "1_21_6", target: "1_21_5", runtimeMc: "1.21.5"],
-    [id: "1_21_7", target: "1_21_8", runtimeMc: "1.21.8"],
-    [id: "1_21_9", target: "1_21_8", runtimeMc: "1.21.8"]
-]
+        def profile1211 = neoProfiles.find { it.id == "1_21_1" }
+        def profile1212 = neoProfiles.find { it.id == "1_21_2" }
+        def profile1210 = neoProfiles.find { it.id == "1_21_0" }
 
-runClientAliasMappings.each { alias ->
-    def aliasLabel = alias.id.replace('_', '.')
-    tasks.register("runClientNeo_${alias.id}") {
-        group = "mod development"
-        description = "Runs NeoForge client for Minecraft ${aliasLabel} (alias task; uses ${alias.runtimeMc} NeoForge runtime line)."
-        dependsOn("runClientNeo_${alias.target}")
+        runGradleWithProfile([":common:compileJava", ":neoforge:compileJava"], matrixProps(profile1211))
+        runGradleWithProfile([":common:compileJava", ":neoforge:compileJava"], matrixProps(profile1212))
+        runGradleWithProfile([":neoforge:jar"], matrixProps(profile1210))
     }
 }
