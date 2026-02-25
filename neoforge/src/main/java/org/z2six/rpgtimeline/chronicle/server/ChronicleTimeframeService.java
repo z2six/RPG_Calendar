@@ -44,7 +44,7 @@ public final class ChronicleTimeframeService {
     private static final String DEFAULT_CUSTOM_TEXTURE = "minecraft:textures/block/stone.png";
 
     private ChronicleTimeframeService() {
-        // no-op
+        // no-op.
     }
 
     public static List<ChronicleTimeframe> buildServerTimeframes(MinecraftServer server) {
