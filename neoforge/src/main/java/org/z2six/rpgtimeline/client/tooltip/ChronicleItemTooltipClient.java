@@ -19,7 +19,7 @@ public final class ChronicleItemTooltipClient implements ClientTooltipComponent 
     }
 
     @Override
-    public int getHeight() {
+    public int getHeight(Font font) {
         return ICON_SIZE + ICON_SPACING;
     }
 
@@ -30,9 +30,9 @@ public final class ChronicleItemTooltipClient implements ClientTooltipComponent 
     }
 
     @Override
-    public void renderImage(Font font, int x, int y, GuiGraphics g) {
-        int width = getWidth(font);
-        int iconX = x + (width - ICON_SIZE) / 2;
+    public void renderImage(Font font, int x, int y, int width, int height, GuiGraphics g) {
+        int componentWidth = getWidth(font);
+        int iconX = x + (componentWidth - ICON_SIZE) / 2;
         g.renderItem(stack, iconX, y + 1);
     }
 

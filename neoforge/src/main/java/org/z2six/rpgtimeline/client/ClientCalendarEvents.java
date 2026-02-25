@@ -5,6 +5,7 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
@@ -253,11 +254,11 @@ public final class ClientCalendarEvents {
 
             int topX = scaledCenterX - TOP_ORNAMENT_W / 2;
             int topY = scaledTextY - TOP_ORNAMENT_H - 6;
-            g.blit(TOP_ORNAMENT, topX, topY, 0, 0, TOP_ORNAMENT_W, TOP_ORNAMENT_H, TOP_ORNAMENT_W, TOP_ORNAMENT_H);
+            g.blit(RenderType::guiTextured, TOP_ORNAMENT, topX, topY, 0.0F, 0.0F, TOP_ORNAMENT_W, TOP_ORNAMENT_H, TOP_ORNAMENT_W, TOP_ORNAMENT_H);
 
             int bottomX = scaledCenterX - BOTTOM_ORNAMENT_W / 2;
             int bottomY = scaledTextY + scaledTextHeight + 6;
-            g.blit(BOTTOM_ORNAMENT, bottomX, bottomY, 0, 0, BOTTOM_ORNAMENT_W, BOTTOM_ORNAMENT_H, BOTTOM_ORNAMENT_W, BOTTOM_ORNAMENT_H);
+            g.blit(RenderType::guiTextured, BOTTOM_ORNAMENT, bottomX, bottomY, 0.0F, 0.0F, BOTTOM_ORNAMENT_W, BOTTOM_ORNAMENT_H, BOTTOM_ORNAMENT_W, BOTTOM_ORNAMENT_H);
 
             RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
             RenderSystem.disableBlend();

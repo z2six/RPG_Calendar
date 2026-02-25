@@ -6,6 +6,7 @@ import net.minecraft.advancements.AdvancementHolder;
 import net.minecraft.advancements.DisplayInfo;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
@@ -460,8 +461,8 @@ public final class ChronicleTimeframeService {
         if (target == null) {
             return "";
         }
-        boolean hasBlock = BuiltInRegistries.BLOCK.containsKey(target)
-                && BuiltInRegistries.BLOCK.get(target) != Blocks.AIR;
+        Block block = BuiltInRegistries.BLOCK.getValue(target);
+        boolean hasBlock = block != null && block != Blocks.AIR;
         boolean hasItem = BuiltInRegistries.ITEM.containsKey(target);
 
         ChronicleTimeframeRule.TargetMode effective = mode;
@@ -482,8 +483,8 @@ public final class ChronicleTimeframeService {
         if (itemId == null) {
             return "";
         }
-        boolean hasBlock = BuiltInRegistries.BLOCK.containsKey(itemId)
-                && BuiltInRegistries.BLOCK.get(itemId) != Blocks.AIR;
+        Block block = BuiltInRegistries.BLOCK.getValue(itemId);
+        boolean hasBlock = block != null && block != Blocks.AIR;
 
         ChronicleTimeframeRule.TargetMode effective = mode;
         if (effective == ChronicleTimeframeRule.TargetMode.AUTO) {
@@ -551,8 +552,8 @@ public final class ChronicleTimeframeService {
     }
 
     private static boolean isValidBlock(ResourceLocation id) {
-        return BuiltInRegistries.BLOCK.containsKey(id)
-                && BuiltInRegistries.BLOCK.get(id) != Blocks.AIR;
+        Block block = BuiltInRegistries.BLOCK.getValue(id);
+        return block != null && block != Blocks.AIR;
     }
 
     private static String resolveEntityFromText(MatchContext ctx) {

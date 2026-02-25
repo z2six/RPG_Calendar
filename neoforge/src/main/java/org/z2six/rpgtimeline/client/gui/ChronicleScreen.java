@@ -13,6 +13,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.MultiLineEditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.client.renderer.RenderType;
 import com.mojang.math.Axis;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -23,8 +24,10 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.ChatFormatting;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.joml.Quaternionf;
@@ -1076,7 +1079,7 @@ public class ChronicleScreen extends Screen {
         int textX = iconX + iconSize + gap;
         g.pose().pushPose();
         g.pose().scale(0.5f, 0.5f, 1.0f);
-        g.blit(HALL_OF_FAME_ICON, iconX * 2, iconY * 2, 0, 0, 16, 16, 16, 16);
+        g.blit(RenderType::guiTextured, HALL_OF_FAME_ICON, iconX * 2, iconY * 2, 0.0F, 0.0F, 16, 16, 16, 16);
         g.pose().popPose();
         g.drawString(font, label, textX, y + 6, 0xFFEDEDED, false);
     }
@@ -1278,7 +1281,7 @@ public class ChronicleScreen extends Screen {
         drawTimeframes(g, viewStartUnit, viewUnits);
         drawTimelineBorder(g);
         drawSeasonOverlays(g, def, dayTime, viewStartUnit, viewUnits);
-        RenderSystem.clear(256, Minecraft.ON_OSX);
+        RenderSystem.clear(256);
         RenderSystem.disableDepthTest();
 
         g.fill(railLeft, railY - 1, railRight, railY + 1, 0xFF3A3D4A);
@@ -1714,7 +1717,7 @@ public class ChronicleScreen extends Screen {
         g.pose().translate(drawX, drawY, 0.0f);
         float scale = size / 16.0f;
         g.pose().scale(scale, scale, 1.0f);
-        g.blit(texture, 0, 0, 0, 0, 16, 16, 16, 16);
+        g.blit(RenderType::guiTextured, texture, 0, 0, 0.0F, 0.0F, 16, 16, 16, 16);
         g.pose().popPose();
         RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
     }
@@ -1738,7 +1741,7 @@ public class ChronicleScreen extends Screen {
         g.pose().mulPose(Axis.ZP.rotation(rotation));
         float scale = size / 16.0f;
         g.pose().scale(scale, scale, 1.0f);
-        g.blit(texture, -8, -8, 0, 0, 16, 16, 16, 16);
+        g.blit(RenderType::guiTextured, texture, -8, -8, 0.0F, 0.0F, 16, 16, 16, 16);
         g.pose().popPose();
         RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
     }
@@ -1940,7 +1943,7 @@ public class ChronicleScreen extends Screen {
             int tileH = Math.min(TIMEFRAME_TILE_SIZE, y + h - yy);
             for (int xx = x; xx < x + w; xx += TIMEFRAME_TILE_SIZE) {
                 int tileW = Math.min(TIMEFRAME_TILE_SIZE, x + w - xx);
-                g.blit(texture, xx, yy, 0, 0, tileW, tileH, TIMEFRAME_TILE_SIZE, TIMEFRAME_TILE_SIZE);
+                g.blit(RenderType::guiTextured, texture, xx, yy, 0.0F, 0.0F, tileW, tileH, TIMEFRAME_TILE_SIZE, TIMEFRAME_TILE_SIZE);
             }
         }
         RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
@@ -1976,7 +1979,7 @@ public class ChronicleScreen extends Screen {
         RenderSystem.enableDepthTest();
         RenderSystem.depthMask(true);
         InventoryScreen.renderEntityInInventory(g, centerX, centerY, scale, translate, pose, null, entity);
-        RenderSystem.clear(256, Minecraft.ON_OSX);
+        RenderSystem.clear(256);
         RenderSystem.disableDepthTest();
     }
 
@@ -2831,7 +2834,10 @@ public class ChronicleScreen extends Screen {
         if (id != null && !id.isBlank()) {
             try {
                 ResourceLocation rl = ResourceLocation.parse(id);
-                return new ItemStack(BuiltInRegistries.ITEM.get(rl));
+                Item item = BuiltInRegistries.ITEM.getValue(rl);
+                if (item != null) {
+                    return new ItemStack(item);
+                }
             } catch (Throwable ignored) {
             }
         }
@@ -3213,7 +3219,10 @@ public class ChronicleScreen extends Screen {
             String id = entry.iconItemId();
             if (id != null && !id.isBlank()) {
                 ResourceLocation rl = ResourceLocation.parse(id);
-                return new ItemStack(BuiltInRegistries.ITEM.get(rl));
+                Item item = BuiltInRegistries.ITEM.getValue(rl);
+                if (item != null) {
+                    return new ItemStack(item);
+                }
             }
         } catch (Throwable ignored) {
         }
@@ -3229,7 +3238,8 @@ public class ChronicleScreen extends Screen {
             if (rl == null || !BuiltInRegistries.ITEM.containsKey(rl)) {
                 return ItemStack.EMPTY;
             }
-            return new ItemStack(BuiltInRegistries.ITEM.get(rl));
+            Item item = BuiltInRegistries.ITEM.getValue(rl);
+            return item == null ? ItemStack.EMPTY : new ItemStack(item);
         } catch (Throwable ignored) {
             return ItemStack.EMPTY;
         }
@@ -3248,8 +3258,11 @@ public class ChronicleScreen extends Screen {
             if (rl == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(rl)) {
                 return null;
             }
-            EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.get(rl);
-            Entity entity = type.create(minecraft.level);
+            EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getValue(rl);
+            if (type == null) {
+                return null;
+            }
+            Entity entity = type.create(minecraft.level, EntitySpawnReason.LOAD);
             if (entity instanceof LivingEntity living) {
                 entityRenderCache.put(entityId, living);
                 return living;
