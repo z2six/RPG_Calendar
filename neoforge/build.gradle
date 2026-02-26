@@ -43,9 +43,13 @@ neoForge {
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 
-// NeoForge 1.21.3 profile tasks for Gradle panel usage.
+// NeoForge 1.21.4+ run profiles for Gradle panel usage.
+// Note: Some patch versions (1.21.6, 1.21.7, 1.21.9) do not have dedicated NeoForge runtime lines.
 def neo121Profiles = [
-    [id: "1_21_3", mc: "1.21.3", neoforge: "21.3.95", neoform: "1.21.3-20241023.131943"]
+    [id: "1_21_4",  mc: "1.21.4",  neoforge: "21.4.156", neoform: "1.21.4-20241203.161809"],
+    [id: "1_21_5",  mc: "1.21.5",  neoforge: "21.5.96",  neoform: "1.21.5-20250325.162830"],
+    [id: "1_21_8",  mc: "1.21.8",  neoforge: "21.8.52",  neoform: "1.21.8-20250717.133445"],
+    [id: "1_21_10", mc: "1.21.10", neoforge: "21.10.64", neoform: "1.21.10-20251010.172816"]
 ]
 
 def matrixProps = { profile ->
@@ -85,17 +89,25 @@ def registerMatrixExecTask = { String taskName, String groupName, String descrip
 neo121Profiles.each { profile ->
     def suffix = profile.id
     registerMatrixExecTask(
-            "buildNeo_${suffix}",
-            "build",
-            "Builds NeoForge for Minecraft ${profile.mc}.",
-            [":neoforge:build"],
-            matrixProps(profile)
-    )
-    registerMatrixExecTask(
             "runClientNeo_${suffix}",
             "mod development",
             "Runs NeoForge client for Minecraft ${profile.mc}.",
             [":neoforge:runClient"],
             matrixProps(profile)
     )
+}
+
+def runClientAliasMappings = [
+    [id: "1_21_6", target: "1_21_5", runtimeMc: "1.21.5"],
+    [id: "1_21_7", target: "1_21_8", runtimeMc: "1.21.8"],
+    [id: "1_21_9", target: "1_21_8", runtimeMc: "1.21.8"]
+]
+
+runClientAliasMappings.each { alias ->
+    def aliasLabel = alias.id.replace('_', '.')
+    tasks.register("runClientNeo_${alias.id}") {
+        group = "mod development"
+        description = "Runs NeoForge client for Minecraft ${aliasLabel} (alias task; uses ${alias.runtimeMc} NeoForge runtime line)."
+        dependsOn("runClientNeo_${alias.target}")
+    }
 }
