@@ -28,7 +28,7 @@ public class RPGTimeline {
 
         try {
             RPGTimelineConfig.register();
-            Constants.LOG.debug("[RPGTimeline] Registered RPGTimelineConfig (SERVER)");
+            Constants.LOG.debug("[RPGTimeline] Registered RPGTimelineConfig (COMMON)");
         } catch (Throwable t) {
             Constants.LOG.error("[RPGTimeline] RPGTimelineConfig.register() failed", t);
         }

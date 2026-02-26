@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * NeoForge-side SERVER config for RPG Calendar.
+ * Forge-side instance COMMON config for RPG Calendar.
  *
  * Sections:
  * - [calendar]
@@ -330,7 +330,7 @@ public final class RPGTimelineConfig {
 
         SERVER_SPEC = builder.build();
 
-        LOG.debug("[RPGTimelineConfig] Built SERVER config spec (calendar)");
+        LOG.debug("[RPGTimelineConfig] Built COMMON config spec (calendar)");
     }
 
     // ---------------------------------------------------------------------
@@ -340,11 +340,11 @@ public final class RPGTimelineConfig {
     public static void register() {
         try {
             ModLoadingContext.get()
-                    .registerConfig(ModConfig.Type.SERVER, SERVER_SPEC);
+                    .registerConfig(ModConfig.Type.COMMON, SERVER_SPEC, "rpgtimeline-server.toml");
 
-            LOG.debug("[RPGTimelineConfig] Registered SERVER config with active ModContainer");
+            LOG.debug("[RPGTimelineConfig] Registered COMMON config in instance config dir as rpgtimeline-server.toml");
         } catch (Throwable t) {
-            LOG.error("[RPGTimelineConfig] Failed to register SERVER config", t);
+            LOG.error("[RPGTimelineConfig] Failed to register COMMON config", t);
         }
     }
 
